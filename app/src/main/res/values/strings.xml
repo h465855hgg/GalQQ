@@ -49,6 +49,12 @@
     <string name="clear_logs">清除</string>
     <string name="logs_cleared">日志已清除</string>
     
+    
+    <!-- 显示设置 -->
+    <string name="gal_display_cat_title">显示设置</string>
+    <string name="gal_auto_show_title">自动显示选项</string>
+    <string name="gal_auto_show_summary">开启后每条消息自动显示选项条；关闭后需点击按钮才生成选项</string>
+    
     <!-- 关于 -->
     <string name="gal_about_cat_title">关于</string>
     <string name="gal_contact_title">联系作者</string>

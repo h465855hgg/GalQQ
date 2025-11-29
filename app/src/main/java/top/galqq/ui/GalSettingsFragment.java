@@ -195,6 +195,18 @@ public class GalSettingsFragment extends PreferenceFragmentCompat {
             });
         }
         
+        // Auto Show Options
+        Preference autoShowOptionsSwitch = findPreference(ConfigManager.KEY_AUTO_SHOW_OPTIONS);
+        if (autoShowOptionsSwitch != null) {
+            if (autoShowOptionsSwitch instanceof androidx.preference.TwoStatePreference) {
+                ((androidx.preference.TwoStatePreference) autoShowOptionsSwitch).setChecked(ConfigManager.isAutoShowOptionsEnabled());
+            }
+            autoShowOptionsSwitch.setOnPreferenceChangeListener((preference, newValue) -> {
+                ConfigManager.setAutoShowOptionsEnabled((Boolean) newValue);
+                return true;
+            });
+        }
+
         // Verbose Log
         SwitchPreference verboseLogPref = findPreference(ConfigManager.KEY_VERBOSE_LOG);
         if (verboseLogPref != null) {
