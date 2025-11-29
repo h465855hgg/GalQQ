@@ -206,6 +206,100 @@ public class GalSettingsFragment extends PreferenceFragmentCompat {
                 return true;
             });
         }
+        
+        // Affinity Display (好感度显示)
+        Preference affinitySwitch = findPreference(ConfigManager.KEY_AFFINITY_ENABLED);
+        if (affinitySwitch != null) {
+            if (affinitySwitch instanceof androidx.preference.TwoStatePreference) {
+                ((androidx.preference.TwoStatePreference) affinitySwitch).setChecked(ConfigManager.isAffinityEnabled());
+            }
+            affinitySwitch.setOnPreferenceChangeListener((preference, newValue) -> {
+                ConfigManager.setAffinityEnabled((Boolean) newValue);
+                return true;
+            });
+        }
+        
+        // Affinity Model (好感度计算模型)
+        androidx.preference.ListPreference affinityModelPref = findPreference(ConfigManager.KEY_AFFINITY_MODEL);
+        if (affinityModelPref != null) {
+            affinityModelPref.setValue(String.valueOf(ConfigManager.getAffinityModel()));
+            affinityModelPref.setSummary(ConfigManager.getAffinityModelName(ConfigManager.getAffinityModel()));
+            affinityModelPref.setOnPreferenceChangeListener((preference, newValue) -> {
+                int model = Integer.parseInt((String) newValue);
+                ConfigManager.setAffinityModel(model);
+                affinityModelPref.setSummary(ConfigManager.getAffinityModelName(model));
+                
+                // 【关键】清空好感度显示缓存，以便使用新模型重新计算
+                try {
+                    top.galqq.hook.MessageInterceptor.clearAffinityDisplayCache();
+                    android.widget.Toast.makeText(requireContext(), "计算模型已切换，返回聊天界面后生效", android.widget.Toast.LENGTH_SHORT).show();
+                } catch (Throwable t) {
+                    // 忽略错误（可能在非 Xposed 环境下运行）
+                }
+                return true;
+            });
+        }
+        
+        // Test Affinity Data (测试好感度数据获取)
+        Preference testAffinityPref = findPreference("gal_test_affinity");
+        if (testAffinityPref != null) {
+            testAffinityPref.setOnPreferenceClickListener(preference -> {
+                android.widget.Toast.makeText(requireContext(), "正在测试好感度数据获取...\n调试数据将保存到 Download/GalQQ_Debug/", android.widget.Toast.LENGTH_LONG).show();
+                
+                // 创建 CloseRankClient 并测试（启用调试模式）
+                top.galqq.utils.CloseRankClient client = new top.galqq.utils.CloseRankClient();
+                client.setDebugMode(true); // 启用调试模式，保存请求和响应到下载目录
+                
+                // 测试获取"谁在意我"数据
+                client.fetchWhoCaresMe(requireContext(), new top.galqq.utils.CloseRankClient.RankCallback() {
+                    @Override
+                    public void onSuccess(java.util.Map<String, Integer> uinToScore) {
+                        android.app.Activity activity = getActivity();
+                        if (activity != null && isAdded()) {
+                            activity.runOnUiThread(() -> {
+                                StringBuilder sb = new StringBuilder();
+                                sb.append("✅ 获取成功！\n");
+                                sb.append("谁在意我: ").append(uinToScore.size()).append(" 条数据\n\n");
+                                
+                                // 显示前5条数据
+                                int count = 0;
+                                for (java.util.Map.Entry<String, Integer> entry : uinToScore.entrySet()) {
+                                    if (count >= 5) {
+                                        sb.append("...(共").append(uinToScore.size()).append("条)");
+                                        break;
+                                    }
+                                    sb.append("QQ: ").append(entry.getKey()).append(" -> ").append(entry.getValue()).append("\n");
+                                    count++;
+                                }
+                                
+                                sb.append("\n\n📁 调试数据已保存到:\nDownload/GalQQ_Debug/");
+                                
+                                new android.app.AlertDialog.Builder(activity)
+                                    .setTitle("好感度数据测试结果")
+                                    .setMessage(sb.toString())
+                                    .setPositiveButton("确定", null)
+                                    .show();
+                            });
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Exception e) {
+                        android.app.Activity activity = getActivity();
+                        if (activity != null && isAdded()) {
+                            activity.runOnUiThread(() -> {
+                                new android.app.AlertDialog.Builder(activity)
+                                    .setTitle("好感度数据测试失败")
+                                    .setMessage("❌ 获取失败: " + e.getMessage() + "\n\n请检查：\n1. 是否已登录QQ\n2. 是否有网络连接\n3. Cookie是否有效\n\n📁 调试数据已保存到:\nDownload/GalQQ_Debug/")
+                                    .setPositiveButton("确定", null)
+                                    .show();
+                            });
+                        }
+                    }
+                });
+                return true;
+            });
+        }
 
         // Verbose Log
         SwitchPreference verboseLogPref = findPreference(ConfigManager.KEY_VERBOSE_LOG);

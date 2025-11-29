@@ -142,6 +142,25 @@
             android:title="@string/gal_auto_show_title"
             android:summary="@string/gal_auto_show_summary"
             android:defaultValue="false" />
+        
+        <SwitchPreference
+            android:key="gal_affinity_enabled"
+            android:title="显示好感度"
+            android:summary="在消息发送者头像旁显示好感度数值（基于QQ空间亲密度）"
+            android:defaultValue="false" />
+        
+        <ListPreference
+            android:key="gal_affinity_model"
+            android:title="好感度计算模型"
+            android:entries="@array/affinity_model_names"
+            android:entryValues="@array/affinity_model_values"
+            android:defaultValue="2"
+            android:summary="选择好感度计算方式" />
+        
+        <Preference
+            android:key="gal_test_affinity"
+            android:title="测试好感度数据获取"
+            android:summary="点击测试从QQ空间获取亲密度排行数据" />
     </PreferenceCategory>
 
     <PreferenceCategory android:title="@string/gal_dict_cat_title">

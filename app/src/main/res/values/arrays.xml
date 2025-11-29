@@ -27,4 +27,16 @@
         <item>blacklist</item>
         <item>whitelist</item>
     </string-array>
+    
+    <!-- 好感度计算模型选项 -->
+    <string-array name="affinity_model_names">
+        <item>双向奔赴模型 - 只有互相关注才高分</item>
+        <item>加权平衡模型 - 平均值×平衡系数</item>
+        <item>综合加权模型 - 他在意我60%+我在意他40%</item>
+    </string-array>
+    <string-array name="affinity_model_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
 </resources>

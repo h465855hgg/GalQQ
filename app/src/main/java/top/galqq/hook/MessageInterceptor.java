@@ -41,16 +41,29 @@ public class MessageInterceptor {
 
     // 记录已请求显示选项的消息ID，防止View复用时重置回按钮状态
     private static final java.util.Set<String> requestedOptionsMsgIds = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    
+    // 【好感度缓存】senderUin -> affinity，用于View复用时快速获取
+    // 这个缓存与 AffinityManager 的缓存不同，这里是为了解决 View 复用时的显示问题
+    private static final java.util.Map<String, Integer> affinityDisplayCache = 
+        java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<String, Integer>(200, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(java.util.Map.Entry<String, Integer> eldest) {
+                return size() > 200; // 最多缓存200个用户的好感度
+            }
+        });
+    
+    /**
+     * 清空好感度显示缓存
+     * 当用户修改计算模型时需要调用此方法，以便重新计算好感度
+     */
+    public static void clearAffinityDisplayCache() {
+        affinityDisplayCache.clear();
+        de.robv.android.xposed.XposedBridge.log(TAG + ": 好感度显示缓存已清空");
+    }
 
     public static void init(ClassLoader classLoader) {
         // Detect QQ architecture and use appropriate hook strategy
         if (top.galqq.utils.QQNTUtils.isQQNT(classLoader)) {
-            XposedBridge.log(TAG + ": Detected QQNT, using QQNT hook strategy");
-            hookAIOBubbleMsgItemVB(classLoader);  // QQNT architecture
-            
-            XposedBridge.log(TAG + ": Detected QQNT, using QQNT hook strategy");
-            hookAIOBubbleMsgItemVB(classLoader);  // QQNT architecture
-            
             XposedBridge.log(TAG + ": Detected QQNT, using QQNT hook strategy");
             hookAIOBubbleMsgItemVB(classLoader);  // QQNT architecture
             
@@ -59,6 +72,43 @@ public class MessageInterceptor {
         } else {
             XposedBridge.log(TAG + ": Detected legacy QQ, using TextItemBuilder hook strategy");
             hookTextItemBuilder(classLoader);      // Legacy QQ architecture
+        }
+    }
+    
+    // 标记好感度管理器是否已初始化
+    private static boolean sAffinityManagerInitialized = false;
+    
+    /**
+     * 初始化好感度管理器（需要在有 Context 时调用）
+     * 只会初始化一次
+     */
+    private static void initAffinityManager(Context context) {
+        if (sAffinityManagerInitialized) {
+            return; // 已经初始化过了
+        }
+        
+        if (ConfigManager.isAffinityEnabled()) {
+            try {
+                XposedBridge.log(TAG + ": [Affinity] 开始初始化好感度管理器...");
+                top.galqq.utils.AffinityManager affinityManager = 
+                    top.galqq.utils.AffinityManager.getInstance(context);
+                // 强制刷新数据
+                affinityManager.refreshData(true, new top.galqq.utils.AffinityManager.RefreshCallback() {
+                    @Override
+                    public void onSuccess() {
+                        XposedBridge.log(TAG + ": [Affinity] ✓ 好感度数据刷新成功");
+                    }
+                    
+                    @Override
+                    public void onFailure(Exception e) {
+                        XposedBridge.log(TAG + ": [Affinity] ✗ 好感度数据刷新失败: " + e.getMessage());
+                    }
+                });
+                sAffinityManagerInitialized = true;
+                XposedBridge.log(TAG + ": [Affinity] 好感度管理器初始化完成");
+            } catch (Throwable t) {
+                XposedBridge.log(TAG + ": [Affinity] 初始化失败: " + t.getMessage());
+            }
         }
     }
 
@@ -654,7 +704,7 @@ public class MessageInterceptor {
                 return;
             }
             
-            // 【关键修复】无条件清理旧选项条（RecyclerView的ViewHolder会复用）
+            // 【关键修复】无条件清理旧选项条和好感度视图（RecyclerView的ViewHolder会复用）
             // 使用View接收，避免ClassCastException（因为可能是LinearLayout也可能是TextView）
             View existingView = rootView.findViewById(OPTION_BAR_ID);
             if (existingView != null) {
@@ -664,6 +714,10 @@ public class MessageInterceptor {
                     rootView.removeView(existingView);
                 }
             }
+            
+            // 【关键修复】清理好感度视图 - 遍历所有可能的位置
+            // 好感度视图可能被添加到 rootView 或其子 ViewGroup 中
+            removeAffinityViewRecursively(rootView);
             
             // 黑白名单过滤
             String senderUin = null;
@@ -876,8 +930,48 @@ public class MessageInterceptor {
                 XposedBridge.log(TAG + ": Error saving message to context: " + t.getMessage());
             }
             
-            // 【只为对方消息创建选项栏，自己的消息不显示UI】
+            // 【只为对方消息创建选项栏和好感度视图，自己的消息不显示UI】
+            // 注意：好感度视图已在前面统一清理过了
             if (!isSelf) {
+                // 【好感度显示】如果启用，添加好感度视图
+                final String finalSenderUin = senderUin;
+                if (ConfigManager.isAffinityEnabled() && finalSenderUin != null && !finalSenderUin.isEmpty()) {
+                    try {
+                        // 初始化好感度管理器（首次调用时会触发数据获取）
+                        initAffinityManager(context);
+                        
+                        // 【View复用修复】优先从显示缓存获取，避免重复计算
+                        int affinity;
+                        if (affinityDisplayCache.containsKey(finalSenderUin)) {
+                            affinity = affinityDisplayCache.get(finalSenderUin);
+                        } else {
+                            // 从 AffinityManager 获取并缓存
+                            top.galqq.utils.AffinityManager affinityManager = 
+                                top.galqq.utils.AffinityManager.getInstance(context);
+                            affinity = affinityManager.getAffinity(finalSenderUin);
+                            
+                            // 只缓存有效的好感度值（非-1）
+                            if (affinity >= 0) {
+                                affinityDisplayCache.put(finalSenderUin, affinity);
+                            }
+                        }
+                        
+                        // 【调试日志】打印好感度获取结果
+                        // XposedBridge.log(TAG + ": [Affinity] senderUin=" + finalSenderUin + ", affinity=" + affinity);
+                        
+                        // 【修改】只有当好感度有效时才创建视图，无好感度数据的用户不显示
+                        if (affinity >= 0) {
+                            // 创建好感度视图
+                            TextView affinityView = top.galqq.utils.AffinityViewHelper.createAffinityView(context, affinity);
+                            
+                            // 添加到布局
+                            addAffinityViewToLayout(context, rootView, affinityView, msgRecord);
+                        }
+                    } catch (Throwable t) {
+                        XposedBridge.log(TAG + ": [Affinity] Error: " + t.getMessage());
+                    }
+                }
+                
                 // 【关键修复】防止加载历史记录时触发AI刷屏
                 // 动态获取配置的阈值（秒转毫秒）
                 int thresholdSeconds = ConfigManager.getHistoryThreshold();
@@ -960,6 +1054,134 @@ public class MessageInterceptor {
         }
     }
 
+    /**
+     * 递归清理好感度视图
+     * 由于 View 复用，好感度视图可能被添加到不同的位置
+     */
+    private static void removeAffinityViewRecursively(ViewGroup parent) {
+        if (parent == null) return;
+        
+        int affinityViewId = top.galqq.utils.AffinityViewHelper.AFFINITY_VIEW_ID;
+        
+        // 先检查直接子 View
+        View affinityView = parent.findViewById(affinityViewId);
+        if (affinityView != null) {
+            ViewGroup actualParent = (ViewGroup) affinityView.getParent();
+            if (actualParent != null) {
+                actualParent.removeView(affinityView);
+            }
+        }
+        
+        // 遍历所有子 View，查找并移除
+        for (int i = parent.getChildCount() - 1; i >= 0; i--) {
+            View child = parent.getChildAt(i);
+            if (child.getId() == affinityViewId) {
+                parent.removeViewAt(i);
+            } else if (child instanceof ViewGroup) {
+                // 递归检查子 ViewGroup
+                removeAffinityViewRecursively((ViewGroup) child);
+            }
+        }
+    }
+
+    /**
+     * 添加好感度视图到布局
+     * 使用与选项条完全相同的方式：找到消息气泡，定位到气泡上方
+     * 不使用任何降级逻辑，只支持 ConstraintLayout
+     */
+    private static void addAffinityViewToLayout(Context context, ViewGroup rootView, View affinityView, Object msgRecord) {
+        try {
+            // 1. 添加视图到 ConstraintLayout（与选项条相同）
+            Class<?> constraintLayoutParamsClass = XposedHelpers.findClass(
+                "androidx.constraintlayout.widget.ConstraintLayout$LayoutParams", 
+                context.getClassLoader()
+            );
+            ViewGroup.LayoutParams clp = (ViewGroup.LayoutParams) constraintLayoutParamsClass
+                .getConstructor(int.class, int.class)
+                .newInstance(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            
+            rootView.addView(affinityView, clp);
+            
+            // 2. 使用 ConstraintSet 定位（与选项条相同）
+            Class<?> constraintSetClass = XposedHelpers.findClass(
+                "androidx.constraintlayout.widget.ConstraintSet", 
+                context.getClassLoader()
+            );
+            Object constraintSet = constraintSetClass.newInstance();
+            XposedHelpers.callMethod(constraintSet, "clone", rootView);
+            
+            // 3. 查找消息气泡（与选项条使用完全相同的逻辑）
+            int msgBubbleId = -1;
+            
+            // 3.1 BubbleLayout Class Name Search (Priority)
+            for (int i = 0; i < rootView.getChildCount(); i++) {
+                View child = rootView.getChildAt(i);
+                if (child.getClass().getName().contains("BubbleLayout") && child.getId() != View.NO_ID) {
+                    msgBubbleId = child.getId();
+                    break;
+                }
+            }
+            
+            // 3.2 Text Content Search (Fallback)
+            if (msgBubbleId == -1) {
+                String msgContent = getMessageContentNT(msgRecord);
+                if (!msgContent.isEmpty()) {
+                    View textContainer = findViewWithText(rootView, msgContent);
+                    if (textContainer != null) {
+                        View bubble = textContainer;
+                        while (bubble.getParent() != rootView && bubble.getParent() instanceof View) {
+                            bubble = (View) bubble.getParent();
+                        }
+                        
+                        if (bubble.getParent() == rootView && bubble.getId() != View.NO_ID) {
+                            msgBubbleId = bubble.getId();
+                        }
+                    }
+                }
+            }
+            
+            // 3.3 LinearLayout Fallback (Last Resort)
+            if (msgBubbleId == -1) {
+                for (int i = 0; i < rootView.getChildCount(); i++) {
+                    View child = rootView.getChildAt(i);
+                    if (child instanceof LinearLayout && child.getId() != View.NO_ID) {
+                        msgBubbleId = child.getId();
+                        break;
+                    }
+                }
+            }
+            
+            // 4. 如果找不到气泡，不添加好感度视图（不降级）
+            if (msgBubbleId == -1) {
+                // 移除已添加的视图
+                rootView.removeView(affinityView);
+                XposedBridge.log(TAG + ": [Affinity] Could not find message bubble, skipping affinity view");
+                return;
+            }
+            
+            // 5. 设置约束（定位到气泡上方，左侧对齐父容器）
+            int viewId = affinityView.getId();
+            int parentId = 0; // ConstraintLayout.LayoutParams.PARENT_ID = 0
+            // 约束常量: TOP=3, BOTTOM=4, LEFT=1, RIGHT=2, START=6, END=7
+            int TOP = 3, BOTTOM = 4, LEFT = 1;
+            
+            // 底部连接到气泡顶部，增加间距使其更靠上（8dp）
+            XposedHelpers.callMethod(constraintSet, "connect", viewId, BOTTOM, msgBubbleId, TOP, dp2px(context, 8));
+            // 左侧对齐父容器左边，留4dp间距（显示在头像上方位置）
+            XposedHelpers.callMethod(constraintSet, "connect", viewId, LEFT, parentId, LEFT, dp2px(context, 4));
+            
+            // 6. 应用约束
+            XposedHelpers.callMethod(constraintSet, "applyTo", rootView);
+            
+        } catch (Throwable t) {
+            XposedBridge.log(TAG + ": [Affinity] Error adding affinity view: " + t.getMessage());
+            // 出错时移除视图
+            try {
+                rootView.removeView(affinityView);
+            } catch (Throwable ignored) {}
+        }
+    }
+    
     private static void handleLegacyLayout(Context context, ViewGroup rootView, View optionBar) {
         ViewGroup.LayoutParams lp;
         if (rootView instanceof RelativeLayout) {

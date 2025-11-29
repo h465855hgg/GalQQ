@@ -160,10 +160,10 @@ public class MessageContextManager {
             
             context.addMessage(message);
             
-            XposedBridge.log(TAG + ": ✅ 成功添加消息 [" + conversationId + "] " 
-                + senderName + ": " + content.substring(0, Math.min(30, content.length())) 
-                + (content.length() > 30 ? "..." : ""));
-            XposedBridge.log(TAG + ":   当前会话消息数=" + context.messages.size());
+            //XposedBridge.log(TAG + ": ✅ 成功添加消息 [" + conversationId + "] " 
+            //    + senderName + ": " + content.substring(0, Math.min(30, content.length())) 
+            //    + (content.length() > 30 ? "..." : ""));
+            //XposedBridge.log(TAG + ":   当前会话消息数=" + context.messages.size());
             
         } catch (Exception e) {
             XposedBridge.log(TAG + ": Error adding message: " + e.getMessage());

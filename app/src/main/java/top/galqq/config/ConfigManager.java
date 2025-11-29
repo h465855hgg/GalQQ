@@ -32,6 +32,16 @@ public class ConfigManager {
     public static final String KEY_CONTEXT_MESSAGE_COUNT = "gal_context_message_count";
     public static final String KEY_HISTORY_THRESHOLD = "gal_history_threshold";
     public static final String KEY_AUTO_SHOW_OPTIONS = "gal_auto_show_options";
+    
+    // Affinity Keys (好感度功能)
+    public static final String KEY_AFFINITY_ENABLED = "gal_affinity_enabled";
+    public static final String KEY_AFFINITY_MODEL = "gal_affinity_model";
+    
+    // Affinity Model Constants
+    public static final int AFFINITY_MODEL_MUTUAL = 0;      // 双向奔赴模型
+    public static final int AFFINITY_MODEL_BALANCED = 1;    // 加权平衡模型
+    public static final int AFFINITY_MODEL_EGOCENTRIC = 2;  // 综合加权模型
+    public static final int DEFAULT_AFFINITY_MODEL = AFFINITY_MODEL_EGOCENTRIC; // 默认使用综合加权模型
 
     // AI Providers
     public static final String PROVIDER_OPENAI = "openai";
@@ -310,6 +320,57 @@ public class ConfigManager {
     
     public static void setAutoShowOptionsEnabled(boolean enabled) {
         getMmkv().encode(KEY_AUTO_SHOW_OPTIONS, enabled);
+    }
+
+    // ========== Affinity Methods (好感度功能) ==========
+    
+    /**
+     * 检查好感度显示功能是否启用
+     * @return true 如果启用
+     */
+    public static boolean isAffinityEnabled() {
+        return getMmkv().decodeBool(KEY_AFFINITY_ENABLED, false);
+    }
+    
+    /**
+     * 设置好感度显示功能开关
+     * @param enabled 是否启用
+     */
+    public static void setAffinityEnabled(boolean enabled) {
+        getMmkv().encode(KEY_AFFINITY_ENABLED, enabled);
+    }
+    
+    /**
+     * 获取好感度计算模型
+     * @return 模型ID (0=双向奔赴, 1=加权平衡, 2=综合加权)
+     */
+    public static int getAffinityModel() {
+        return getMmkv().decodeInt(KEY_AFFINITY_MODEL, DEFAULT_AFFINITY_MODEL);
+    }
+    
+    /**
+     * 设置好感度计算模型
+     * @param model 模型ID
+     */
+    public static void setAffinityModel(int model) {
+        getMmkv().encode(KEY_AFFINITY_MODEL, model);
+    }
+    
+    /**
+     * 获取好感度模型名称
+     * @param model 模型ID
+     * @return 模型名称
+     */
+    public static String getAffinityModelName(int model) {
+        switch (model) {
+            case AFFINITY_MODEL_MUTUAL:
+                return "双向奔赴模型";
+            case AFFINITY_MODEL_BALANCED:
+                return "加权平衡模型";
+            case AFFINITY_MODEL_EGOCENTRIC:
+            default:
+                return "综合加权模型";
+        }
     }
 
     // ========== Generic Methods ==========
