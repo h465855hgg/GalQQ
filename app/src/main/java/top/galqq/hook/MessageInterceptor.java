@@ -42,6 +42,9 @@ public class MessageInterceptor {
     // 记录已请求显示选项的消息ID，防止View复用时重置回按钮状态
     private static final java.util.Set<String> requestedOptionsMsgIds = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
     
+    // 【收起状态】记录已收起的消息ID，用于区分「显示选项」和「展开选项」按钮
+    private static final java.util.Set<String> collapsedMsgIds = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    
     // 【好感度缓存】senderUin -> affinity，用于View复用时快速获取
     // 这个缓存与 AffinityManager 的缓存不同，这里是为了解决 View 复用时的显示问题
     private static final java.util.Map<String, Integer> affinityDisplayCache = 
@@ -247,6 +250,12 @@ public class MessageInterceptor {
 
     private static void setupOptionBarContent(Context context, LinearLayout bar, String msgContent, 
                                                Object msgObj, String msgId, String conversationId) {
+        // 调用带 rootView 参数的版本，rootView 为 null 时不添加操作按钮
+        setupOptionBarContentWithRoot(context, bar, msgContent, msgObj, msgId, conversationId, null);
+    }
+    
+    private static void setupOptionBarContentWithRoot(Context context, LinearLayout bar, String msgContent, 
+                                               Object msgObj, String msgId, String conversationId, ViewGroup rootView) {
         if (ConfigManager.isAiEnabled()) {
             // 添加加载指示器 (Loading Text)
             bar.removeAllViews();
@@ -381,7 +390,13 @@ public class MessageInterceptor {
                         
                         // 缓存AI结果
                         cacheOptions(msgId, options);
-                        populateBarAndShow(context, bar, options, msgObj);
+                        
+                        // 如果有 rootView，使用带操作按钮的版本
+                        if (rootView != null) {
+                            populateBarAndShowWithActions(context, bar, options, msgObj, msgId, conversationId, rootView);
+                        } else {
+                            populateBarAndShow(context, bar, options, msgObj);
+                        }
                     }
 
                     @Override
@@ -1277,9 +1292,29 @@ public class MessageInterceptor {
                 // 检查是否有缓存结果（有结果也应该直接显示）
                 boolean hasCache = (msgId != null && optionsCache.containsKey(msgId));
                 
-                if (autoShow || hasRequested || hasCache) {
+                // 检查是否已收起（优先显示「展开选项」按钮）
+                boolean isCollapsed = (msgId != null && collapsedMsgIds.contains(msgId));
+                
+                if (isCollapsed && hasCache) {
+                    // 已收起且有缓存：显示「展开选项」按钮
+                    View expandBtn = createExpandFromCacheButton(context, msgRecord, msgId, conversationId, rootView);
+                    
+                    Class<?> constraintLayoutClass = null;
+                    try {
+                        constraintLayoutClass = XposedHelpers.findClass("androidx.constraintlayout.widget.ConstraintLayout", context.getClassLoader());
+                    } catch (Throwable t) {
+                        // Ignore if class not found
+                    }
+
+                    if (constraintLayoutClass != null && constraintLayoutClass.isAssignableFrom(rootView.getClass())) {
+                        handleConstraintLayout(context, rootView, expandBtn, msgRecord);
+                    } else if (rootView.getClass().getName().contains("ConstraintLayout")) {
+                        handleConstraintLayout(context, rootView, expandBtn, msgRecord);
+                    } else {
+                        handleLegacyLayout(context, rootView, expandBtn);
+                    }
+                } else if (autoShow || hasRequested || hasCache) {
                     // 自动显示模式：创建选项条并立即填充
-                    // XposedBridge.log(TAG + ": AutoShow mode - creating option bar");
                     LinearLayout optionBar = createEmptyOptionBarNT(context);
                     optionBar.setId(OPTION_BAR_ID);
                     
@@ -1291,19 +1326,15 @@ public class MessageInterceptor {
                     }
 
                     if (constraintLayoutClass != null && constraintLayoutClass.isAssignableFrom(rootView.getClass())) {
-                        // XposedBridge.log(TAG + ": Using ConstraintLayout handler");
                         handleConstraintLayout(context, rootView, optionBar, msgRecord);
                     } else if (rootView.getClass().getName().contains("ConstraintLayout")) {
-                        // XposedBridge.log(TAG + ": Using ConstraintLayout handler (fallback)");
                         handleConstraintLayout(context, rootView, optionBar, msgRecord);
                     } else {
-                        // XposedBridge.log(TAG + ": Using LegacyLayout handler");
                         handleLegacyLayout(context, rootView, optionBar);
                     }
                     
-                    // XposedBridge.log(TAG + ": Filling option bar content");
-                    fillOptionBarContent(context, optionBar, msgRecord, msgId, conversationId);
-                    // XposedBridge.log(TAG + ": AutoShow option bar created and filled successfully");
+                    // 使用带 rootView 的版本以支持操作按钮
+                    fillOptionBarContentWithRoot(context, optionBar, msgRecord, msgId, conversationId, rootView);
                 } else {
                     // 按需显示模式：仅显示按钮
                     View button = createShowOptionsButton(context, msgRecord, msgId, conversationId, rootView);
@@ -1682,42 +1713,330 @@ public class MessageInterceptor {
                 handleLegacyLayout(context, rootView, optionBar);
             }
             
-            // 填充选项
-            fillOptionBarContent(context, optionBar, msgRecord, msgId, conversationId);
+            // 填充选项（使用带 rootView 的版本以支持操作按钮）
+            fillOptionBarContentWithRoot(context, optionBar, msgRecord, msgId, conversationId, rootView);
         });
         
         button.setId(OPTION_BAR_ID); // 使用相同ID避免冲突
         return button;
     }
     
-    // 填充选项条内容（AI或本地词库）
+    // 填充选项条内容（AI或本地词库）- 无 rootView 版本（兼容旧调用）
     private static void fillOptionBarContent(Context context, LinearLayout bar, Object msgRecord, 
                                              String msgId, String conversationId) {
+        fillOptionBarContentWithRoot(context, bar, msgRecord, msgId, conversationId, null);
+    }
+    
+    // 填充选项条内容（AI或本地词库）- 带 rootView 版本（支持操作按钮）
+    private static void fillOptionBarContentWithRoot(Context context, LinearLayout bar, Object msgRecord, 
+                                             String msgId, String conversationId, ViewGroup rootView) {
         String msgContent = getMessageContentNT(msgRecord);
         
-        // XposedBridge.log(TAG + ": fillOptionBarContent - msgId=" + msgId + 
-        //     ", aiEnabled=" + ConfigManager.isAiEnabled() + 
-        //     ", hasCache=" + (msgId != null && optionsCache.containsKey(msgId)) +
-        //     ", msgContent=" + msgContent);
-        
-        // 【AI缓存优化】如果启用AI且缓存中有选项，直接使用缓存数据
         // 【AI缓存优化】如果启用AI且缓存中有选项，直接使用缓存数据
         if (ConfigManager.isAiEnabled() && msgId != null && optionsCache.containsKey(msgId)) {
-            // XposedBridge.log(TAG + ": Using cached AI options for msgId=" + msgId);
             List<String> cachedOptions = optionsCache.get(msgId);
-            populateBarAndShow(context, bar, cachedOptions, msgRecord);
+            if (rootView != null) {
+                populateBarAndShowWithActions(context, bar, cachedOptions, msgRecord, msgId, conversationId, rootView);
+            } else {
+                populateBarAndShow(context, bar, cachedOptions, msgRecord);
+            }
             return;
         }
         
         // 否则重新获取选项（AI或本地词库）
-        // XposedBridge.log(TAG + ": Setting up option bar content for msgContent=" + msgContent);
-        setupOptionBarContent(context, bar, msgContent, msgRecord, msgId, conversationId);
+        setupOptionBarContentWithRoot(context, bar, msgContent, msgRecord, msgId, conversationId, rootView);
     }
     
     private static void useDictionaryNT(Context context, LinearLayout bar, Object msgRecord) {
         DictionaryManager.loadDictionary(context);
         List<String> options = DictionaryManager.pickRandomLines(3);
         populateBarAndShow(context, bar, options, msgRecord);
+    }
+    
+    // ========== 操作按钮（刷新/收起/展开）==========
+    
+    /**
+     * 创建操作按钮行（包含刷新和收起按钮）
+     * @param context 上下文
+     * @param optionBar 选项条容器
+     * @param msgRecord 消息记录对象
+     * @param msgId 消息ID
+     * @param conversationId 会话ID
+     * @param rootView 根视图
+     * @param currentOptions 当前显示的选项列表
+     * @return 操作按钮行容器
+     */
+    private static LinearLayout createActionButtonsRow(
+        Context context,
+        LinearLayout optionBar,
+        Object msgRecord,
+        String msgId,
+        String conversationId,
+        ViewGroup rootView,
+        List<String> currentOptions
+    ) {
+        LinearLayout row = new LinearLayout(context);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        rowParams.topMargin = dp2px(context, 6); // 与选项间隔
+        row.setLayoutParams(rowParams);
+        
+        // 添加刷新按钮
+        TextView refreshBtn = createRefreshButton(context, optionBar, msgRecord, msgId, conversationId, rootView);
+        row.addView(refreshBtn);
+        
+        // 添加收起按钮
+        TextView collapseBtn = createCollapseButton(context, optionBar, msgRecord, msgId, conversationId, rootView, currentOptions);
+        row.addView(collapseBtn);
+        
+        return row;
+    }
+    
+    /**
+     * 创建刷新按钮
+     */
+    private static TextView createRefreshButton(
+        Context context,
+        LinearLayout optionBar,
+        Object msgRecord,
+        String msgId,
+        String conversationId,
+        ViewGroup rootView
+    ) {
+        TextView btn = new TextView(context);
+        btn.setText("刷新");
+        btn.setTextSize(12);
+        btn.setPadding(dp2px(context, 10), dp2px(context, 6), dp2px(context, 10), dp2px(context, 6));
+        btn.setBackground(getSelectableRoundedBackground(Color.parseColor("#F5F5F5"), dp2px(context, 12)));
+        btn.setTextColor(Color.parseColor("#666666"));
+        btn.setClickable(true);
+        btn.setFocusable(true);
+        
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        btn.setLayoutParams(lp);
+        
+        btn.setOnClickListener(v -> {
+            // 触觉反馈
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+            
+            // 清空选项条内容并重新获取（使用带 rootView 的版本以保留操作按钮）
+            optionBar.removeAllViews();
+            String msgContent = getMessageContentNT(msgRecord);
+            setupOptionBarContentWithRoot(context, optionBar, msgContent, msgRecord, msgId, conversationId, rootView);
+        });
+        
+        return btn;
+    }
+    
+    /**
+     * 创建收起按钮
+     */
+    private static TextView createCollapseButton(
+        Context context,
+        LinearLayout optionBar,
+        Object msgRecord,
+        String msgId,
+        String conversationId,
+        ViewGroup rootView,
+        List<String> currentOptions
+    ) {
+        TextView btn = new TextView(context);
+        btn.setText("收起");
+        btn.setTextSize(12);
+        btn.setPadding(dp2px(context, 10), dp2px(context, 6), dp2px(context, 10), dp2px(context, 6));
+        btn.setBackground(getSelectableRoundedBackground(Color.parseColor("#F5F5F5"), dp2px(context, 12)));
+        btn.setTextColor(Color.parseColor("#666666"));
+        btn.setClickable(true);
+        btn.setFocusable(true);
+        
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        lp.leftMargin = dp2px(context, 8); // 与刷新按钮间距
+        btn.setLayoutParams(lp);
+        
+        btn.setOnClickListener(v -> {
+            // 触觉反馈
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+            
+            // 1. 确保当前选项已缓存
+            if (msgId != null && currentOptions != null && !currentOptions.isEmpty()) {
+                cacheOptions(msgId, currentOptions);
+                collapsedMsgIds.add(msgId);
+            }
+            
+            // 2. 移除选项条
+            if (optionBar.getParent() instanceof ViewGroup) {
+                ((ViewGroup) optionBar.getParent()).removeView(optionBar);
+            }
+            
+            // 3. 创建并显示「展开选项」按钮
+            View expandBtn = createExpandFromCacheButton(context, msgRecord, msgId, conversationId, rootView);
+            
+            Class<?> constraintLayoutClass = null;
+            try {
+                constraintLayoutClass = XposedHelpers.findClass(
+                    "androidx.constraintlayout.widget.ConstraintLayout",
+                    context.getClassLoader()
+                );
+            } catch (Throwable t) {
+                // Ignore
+            }
+            
+            if (constraintLayoutClass != null && constraintLayoutClass.isAssignableFrom(rootView.getClass())) {
+                handleConstraintLayout(context, rootView, expandBtn, msgRecord);
+            } else if (rootView.getClass().getName().contains("ConstraintLayout")) {
+                handleConstraintLayout(context, rootView, expandBtn, msgRecord);
+            } else {
+                handleLegacyLayout(context, rootView, expandBtn);
+            }
+        });
+        
+        return btn;
+    }
+    
+    /**
+     * 创建「展开选项」按钮（从缓存恢复）
+     */
+    private static View createExpandFromCacheButton(
+        Context context,
+        Object msgRecord,
+        String msgId,
+        String conversationId,
+        ViewGroup rootView
+    ) {
+        TextView button = new TextView(context);
+        button.setText("展开选项");
+        button.setTextSize(12);
+        button.setPadding(dp2px(context, 8), dp2px(context, 4), dp2px(context, 8), dp2px(context, 4));
+        button.setBackground(getRoundedBackground(Color.parseColor("#F5F5F5"), dp2px(context, 10)));
+        button.setTextColor(Color.parseColor("#666666"));
+        button.setGravity(Gravity.CENTER);
+        
+        button.setOnClickListener(v -> {
+            // 触觉反馈
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+            
+            // 1. 从缓存获取选项
+            List<String> cachedOptions = (msgId != null) ? optionsCache.get(msgId) : null;
+            
+            // 2. 从收起状态移除
+            if (msgId != null) {
+                collapsedMsgIds.remove(msgId);
+            }
+            
+            // 3. 移除展开按钮
+            if (button.getParent() instanceof ViewGroup) {
+                ((ViewGroup) button.getParent()).removeView(button);
+            }
+            
+            // 4. 创建选项条
+            LinearLayout optionBar = createEmptyOptionBarNT(context);
+            optionBar.setId(OPTION_BAR_ID);
+            
+            Class<?> constraintLayoutClass = null;
+            try {
+                constraintLayoutClass = XposedHelpers.findClass(
+                    "androidx.constraintlayout.widget.ConstraintLayout",
+                    context.getClassLoader()
+                );
+            } catch (Throwable t) {
+                // Ignore
+            }
+            
+            if (constraintLayoutClass != null && constraintLayoutClass.isAssignableFrom(rootView.getClass())) {
+                handleConstraintLayout(context, rootView, optionBar, msgRecord);
+            } else if (rootView.getClass().getName().contains("ConstraintLayout")) {
+                handleConstraintLayout(context, rootView, optionBar, msgRecord);
+            } else {
+                handleLegacyLayout(context, rootView, optionBar);
+            }
+            
+            // 5. 填充选项（优先使用缓存，否则重新获取）
+            if (cachedOptions != null && !cachedOptions.isEmpty()) {
+                // 直接使用缓存，不调用AI
+                populateBarAndShowWithActions(context, optionBar, cachedOptions, msgRecord, msgId, conversationId, rootView);
+            } else {
+                // 缓存为空，降级为重新获取（使用带 rootView 的版本）
+                fillOptionBarContentWithRoot(context, optionBar, msgRecord, msgId, conversationId, rootView);
+            }
+        });
+        
+        button.setId(OPTION_BAR_ID);
+        return button;
+    }
+    
+    /**
+     * 填充选项条并显示，同时添加操作按钮行
+     * 这是 populateBarAndShow 的增强版本，用于需要操作按钮的场景
+     */
+    private static void populateBarAndShowWithActions(
+        Context context,
+        LinearLayout bar,
+        List<String> options,
+        Object msgRecord,
+        String msgId,
+        String conversationId,
+        ViewGroup rootView
+    ) {
+        bar.removeAllViews();
+        
+        if (options == null || options.isEmpty()) {
+            bar.setVisibility(View.GONE);
+            return;
+        }
+        
+        // 添加选项按钮
+        for (String option : options) {
+            TextView tv = new TextView(context);
+            tv.setText(option);
+            tv.setTextSize(13);
+            tv.setPadding(dp2px(context, 12), dp2px(context, 8), dp2px(context, 12), dp2px(context, 8));
+            tv.setBackground(getSelectableRoundedBackground(Color.parseColor("#F2F2F2"), dp2px(context, 12)));
+            tv.setTextColor(Color.BLACK);
+            tv.setClickable(true);
+            tv.setFocusable(true);
+            
+            int screenWidth = context.getResources().getDisplayMetrics().widthPixels;
+            int maxWidth = screenWidth - dp2px(context, 16);
+            
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            );
+            lp.setMargins(0, 0, 0, dp2px(context, 6));
+            tv.setMaxWidth(maxWidth);
+            tv.setLayoutParams(lp);
+            tv.setGravity(Gravity.CENTER_VERTICAL);
+            
+            // 短按：直接发送消息
+            tv.setOnClickListener(v -> {
+                sendMessage(context, option, msgRecord);
+            });
+            
+            // 长按：弹出编辑对话框
+            tv.setOnLongClickListener(v -> {
+                v.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+                showEditDialog(context, option, msgRecord);
+                return true;
+            });
+            
+            bar.addView(tv);
+        }
+        
+        // 添加操作按钮行
+        LinearLayout actionRow = createActionButtonsRow(context, bar, msgRecord, msgId, conversationId, rootView, options);
+        bar.addView(actionRow);
+        
+        bar.setVisibility(View.VISIBLE);
     }
     
     private static String getMessageContentNT(Object msgRecord) {

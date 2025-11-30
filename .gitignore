@@ -23,3 +23,12 @@ verbose_*.log
 # Backup files
 备份/
 build_error.txt
+
+# Ignore all dot directories and their contents
+.*
+*/.*
+**/.*
+
+# Keep specific dot files that might be needed
+!.gitignore
+!.gitattributes

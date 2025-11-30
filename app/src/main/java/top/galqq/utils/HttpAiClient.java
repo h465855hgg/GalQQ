@@ -456,6 +456,12 @@ public class HttpAiClient {
                 Log.d(TAG, "解析成功: Markdown代码块");
                 return result;
             }
+            // 尝试从不完整的JSON中提取选项
+            result = extractOptionsFromIncompleteJson(markdownJson);
+            if (result != null && result.size() >= 3) {
+                Log.d(TAG, "解析成功: 不完整Markdown JSON");
+                return result;
+            }
         }
         
         // 策略C: 从混合文本中提取JSON
@@ -466,23 +472,36 @@ public class HttpAiClient {
                 Log.d(TAG, "解析成功: 混合文本JSON");
                 return result;
             }
+            // 尝试从不完整的JSON中提取选项
+            result = extractOptionsFromIncompleteJson(textJson);
+            if (result != null && result.size() >= 3) {
+                Log.d(TAG, "解析成功: 不完整混合文本JSON");
+                return result;
+            }
         }
         
-        // 策略D: 旧格式（|||分隔）
+        // 策略D: 尝试从整个content中提取不完整JSON的选项
+        result = extractOptionsFromIncompleteJson(content);
+        if (result != null && result.size() >= 3) {
+            Log.d(TAG, "解析成功: 不完整JSON提取");
+            return result;
+        }
+        
+        // 策略E: 旧格式（|||分隔）
         result = parseLegacyFormat(content);
         if (result != null && result.size() >= 3) {
             Log.d(TAG, "解析成功: |||分隔格式");
             return result;
         }
         
-        // 策略E: 编号/项目符号列表
+        // 策略F: 编号/项目符号列表
         result = parseNumberedList(content);
         if (result != null && result.size() >= 3) {
             Log.d(TAG, "解析成功: 编号列表格式");
             return result;
         }
         
-        // 策略F: 纯文本行
+        // 策略G: 纯文本行（最后的备选方案）
         result = parsePlainLines(content);
         if (result != null && result.size() >= 3) {
             Log.d(TAG, "解析成功: 纯文本行格式");
@@ -660,7 +679,7 @@ public class HttpAiClient {
 
     /**
      * 解析纯文本行
-     * 将非空行作为选项
+     * 将非空行作为选项，但过滤掉JSON/代码格式的行
      * @param content 文本内容
      * @return 选项列表，如果行数不足返回null
      */
@@ -674,12 +693,99 @@ public class HttpAiClient {
         
         for (String line : lines) {
             String trimmed = line.trim();
-            if (!trimmed.isEmpty()) {
+            if (!trimmed.isEmpty() && isValidOptionLine(trimmed)) {
                 result.add(trimmed);
             }
         }
         
         return result.size() >= 3 ? result : null;
+    }
+
+    /**
+     * 从不完整的JSON中提取选项
+     * 用于处理AI返回被截断的JSON情况
+     * @param content 可能不完整的JSON内容
+     * @return 提取的选项列表
+     */
+    private static List<String> extractOptionsFromIncompleteJson(String content) {
+        if (content == null || content.isEmpty()) {
+            return null;
+        }
+        
+        List<String> result = new ArrayList<>();
+        
+        // 使用正则匹配JSON数组中的字符串元素
+        // 匹配 "内容" 或 "内容", 格式
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
+            "\"([^\"]+)\"\\s*,?",
+            java.util.regex.Pattern.MULTILINE
+        );
+        java.util.regex.Matcher matcher = pattern.matcher(content);
+        
+        // 跳过字段名（如 "options", "choices" 等）
+        java.util.Set<String> fieldNames = new java.util.HashSet<>();
+        fieldNames.add("options");
+        fieldNames.add("choices");
+        fieldNames.add("replies");
+        fieldNames.add("answers");
+        fieldNames.add("responses");
+        
+        while (matcher.find()) {
+            String value = matcher.group(1);
+            if (value != null && !value.isEmpty()) {
+                // 跳过字段名
+                if (fieldNames.contains(value.toLowerCase())) {
+                    continue;
+                }
+                // 跳过太短的内容（可能是JSON语法）
+                if (value.length() < 2) {
+                    continue;
+                }
+                result.add(value.trim());
+            }
+        }
+        
+        return result.size() >= 3 ? result : null;
+    }
+
+    /**
+     * 判断一行是否是有效的选项内容
+     * 过滤掉JSON/代码格式的行
+     * @param line 要检查的行
+     * @return 如果是有效选项返回true
+     */
+    private static boolean isValidOptionLine(String line) {
+        if (line == null || line.isEmpty()) {
+            return false;
+        }
+        
+        // 过滤markdown代码块标记
+        if (line.startsWith("```")) {
+            return false;
+        }
+        
+        // 过滤纯JSON语法字符的行
+        String stripped = line.replaceAll("[\\s\\[\\]{}:,\"]", "");
+        if (stripped.isEmpty()) {
+            return false;
+        }
+        
+        // 过滤JSON字段名行（如 "options": [ 或 "choices": [）
+        if (line.matches("^\"?\\w+\"?\\s*:\\s*\\[?\\s*$")) {
+            return false;
+        }
+        
+        // 过滤只有单个大括号或方括号的行
+        if (line.equals("{") || line.equals("}") || line.equals("[") || line.equals("]") ||
+            line.equals("{,") || line.equals("},") || line.equals("[,") || line.equals("],")) {
+            return false;
+        }
+        
+        // 过滤JSON数组元素格式（如 "选项内容", 或 "选项内容"）
+        // 但要保留实际内容，所以提取引号内的内容
+        // 这里不过滤，让后面的清理逻辑处理
+        
+        return true;
     }
 
     /**
