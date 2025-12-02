@@ -24,11 +24,51 @@ import top.galqq.utils.MessageContextManager;
 import top.galqq.utils.QAppUtils;
 import java.lang.reflect.Field;
 import top.galqq.utils.SendMessageHelper;
+import top.galqq.config.ConfigManager;
 
 public class MessageInterceptor {
 
     private static final String TAG = "GalQQ.MessageInterceptor";
     private static final int OPTION_BAR_ID = 0x7F0A1234; // Custom ID for option bar
+    
+    /**
+     * 调试日志输出（受 gal_debug_hook_log 配置开关控制）
+     */
+    private static void debugLog(String message) {
+        try {
+            if (ConfigManager.isDebugHookLogEnabled()) {
+                XposedBridge.log(message);
+            }
+        } catch (Throwable ignored) {
+            // ConfigManager 未初始化时忽略
+        }
+    }
+    
+    /**
+     * 调试日志输出异常（受 gal_debug_hook_log 配置开关控制）
+     */
+    private static void debugLog(Throwable t) {
+        try {
+            if (ConfigManager.isDebugHookLogEnabled()) {
+                XposedBridge.log(t);
+            }
+        } catch (Throwable ignored) {
+            // ConfigManager 未初始化时忽略
+        }
+    }
+    
+    /**
+     * 调试日志输出异常（受 gal_debug_hook_log 配置开关控制）
+     */
+    private static void debugLog(Exception e) {
+        try {
+            if (ConfigManager.isDebugHookLogEnabled()) {
+                XposedBridge.log(e);
+            }
+        } catch (Throwable ignored) {
+            // ConfigManager 未初始化时忽略
+        }
+    }
     
     // AI选项缓存：msgId -> List<String> options
     private static final java.util.Map<String, java.util.List<String>> optionsCache = 
@@ -61,19 +101,19 @@ public class MessageInterceptor {
      */
     public static void clearAffinityDisplayCache() {
         affinityDisplayCache.clear();
-        de.robv.android.xposed.XposedBridge.log(TAG + ": 好感度显示缓存已清空");
+        XposedBridge.log(TAG + ": 好感度显示缓存已清空");
     }
 
     public static void init(ClassLoader classLoader) {
         // Detect QQ architecture and use appropriate hook strategy
         if (top.galqq.utils.QQNTUtils.isQQNT(classLoader)) {
-            XposedBridge.log(TAG + ": Detected QQNT, using QQNT hook strategy");
+            debugLog(TAG + ": Detected QQNT, using QQNT hook strategy");
             hookAIOBubbleMsgItemVB(classLoader);  // QQNT architecture
             
             // 【DEBUG】Hook AIOSendMsgVMDelegate to analyze message structure
             hookDebugAIOSendMsgVMDelegate(classLoader);
         } else {
-            XposedBridge.log(TAG + ": Detected legacy QQ, using TextItemBuilder hook strategy");
+            debugLog(TAG + ": Detected legacy QQ, using TextItemBuilder hook strategy");
             hookTextItemBuilder(classLoader);      // Legacy QQ architecture
         }
     }
@@ -92,25 +132,25 @@ public class MessageInterceptor {
         
         if (ConfigManager.isAffinityEnabled()) {
             try {
-                XposedBridge.log(TAG + ": [Affinity] 开始初始化好感度管理器...");
+                debugLog(TAG + ": [Affinity] 开始初始化好感度管理器...");
                 top.galqq.utils.AffinityManager affinityManager = 
                     top.galqq.utils.AffinityManager.getInstance(context);
                 // 强制刷新数据
                 affinityManager.refreshData(true, new top.galqq.utils.AffinityManager.RefreshCallback() {
                     @Override
                     public void onSuccess() {
-                        XposedBridge.log(TAG + ": [Affinity] ✓ 好感度数据刷新成功");
+                        debugLog(TAG + ": [Affinity] ✓ 好感度数据刷新成功");
                     }
                     
                     @Override
                     public void onFailure(Exception e) {
-                        XposedBridge.log(TAG + ": [Affinity] ✗ 好感度数据刷新失败: " + e.getMessage());
+                        debugLog(TAG + ": [Affinity] ✗ 好感度数据刷新失败: " + e.getMessage());
                     }
                 });
                 sAffinityManagerInitialized = true;
-                XposedBridge.log(TAG + ": [Affinity] 好感度管理器初始化完成");
+                debugLog(TAG + ": [Affinity] 好感度管理器初始化完成");
             } catch (Throwable t) {
-                XposedBridge.log(TAG + ": [Affinity] 初始化失败: " + t.getMessage());
+                debugLog(TAG + ": [Affinity] 初始化失败: " + t.getMessage());
             }
         }
     }
@@ -125,11 +165,11 @@ public class MessageInterceptor {
             );
             
             if (textItemBuilderClass == null) {
-                XposedBridge.log(TAG + ": TextItemBuilder class not found, skipping hook");
+                debugLog(TAG + ": TextItemBuilder class not found, skipping hook");
                 return;
             }
             
-            XposedBridge.log(TAG + ": Found TextItemBuilder class: " + textItemBuilderClass.getName());
+            debugLog(TAG + ": Found TextItemBuilder class: " + textItemBuilderClass.getName());
             
             // Find the target method
             Method targetMethod = null;
@@ -154,11 +194,11 @@ public class MessageInterceptor {
             }
 
             if (targetMethod == null) {
-                XposedBridge.log(TAG + ": Failed to find target method in TextItemBuilder");
+                debugLog(TAG + ": Failed to find target method in TextItemBuilder");
                 return;
             }
             
-            XposedBridge.log(TAG + ": Found target method: " + methodName);
+            debugLog(TAG + ": Found target method: " + methodName);
             
             // Hook the method using QQ's approach (modify BaseChatItemLayout directly)
             XposedBridge.hookMethod(targetMethod, new XC_MethodHook() {
@@ -194,7 +234,7 @@ public class MessageInterceptor {
                         int screenWidth = context.getResources().getDisplayMetrics().widthPixels;
                         int barWidth = screenWidth - dp2px(context, 24); // 左8+右16=24dp
                         
-                        XposedBridge.log(TAG + ": Screen width=" + screenWidth + ", bar width=" + barWidth);
+                        debugLog(TAG + ": Screen width=" + screenWidth + ", bar width=" + barWidth);
                         
                         RelativeLayout.LayoutParams params = new RelativeLayout.LayoutParams(
                             barWidth, // 使用计算出的具体宽度
@@ -208,18 +248,18 @@ public class MessageInterceptor {
                         
                         baseChatItemLayout.addView(optionBar, params);
                         
-                        XposedBridge.log(TAG + ": Successfully added option bar to BaseChatItemLayout");
+                        debugLog(TAG + ": Successfully added option bar to BaseChatItemLayout");
                         
                     } catch (Throwable t) {
-                        XposedBridge.log(TAG + ": Error in afterHook: " + t.getMessage());
+                        debugLog(TAG + ": Error in afterHook: " + t.getMessage());
                     }
                 }
             });
             
-            XposedBridge.log(TAG + ": ✓ Successfully hooked TextItemBuilder." + methodName);
+            debugLog(TAG + ": ✓ Successfully hooked TextItemBuilder." + methodName);
             
         } catch (Throwable t) {
-            XposedBridge.log(TAG + ": Failed to hook TextItemBuilder: " + t.getMessage());
+            debugLog(TAG + ": Failed to hook TextItemBuilder: " + t.getMessage());
         }
     }
 
@@ -244,7 +284,7 @@ public class MessageInterceptor {
     public static void cacheOptions(String msgId, List<String> options) {
         if (msgId != null && options != null) {
             optionsCache.put(msgId, new java.util.ArrayList<>(options));
-            // XposedBridge.log(TAG + ": Cached AI options for msgId=" + msgId);
+            // debugLog(TAG + ": Cached AI options for msgId=" + msgId);
         }
     }
 
@@ -330,7 +370,7 @@ public class MessageInterceptor {
                     
                     if (isSameMsg) {
                         contextMessages.remove(contextMessages.size() - 1);
-                        // XposedBridge.log("Removed current message from context to avoid duplication");
+                        // debugLog("Removed current message from context to avoid duplication");
                     }
                 }
                 
@@ -376,7 +416,7 @@ public class MessageInterceptor {
                 }
             } catch (Throwable t) {
                 // 提取失败，使用默认值（null和0）
-                XposedBridge.log(TAG + ": Failed to extract current message metadata: " + t.getMessage());
+                debugLog(TAG + ": Failed to extract current message metadata: " + t.getMessage());
             }
             
             // 使用 PromptSelector 选择合适的提示词
@@ -386,13 +426,13 @@ public class MessageInterceptor {
             
             // 如果没有可用的提示词（全部被屏蔽），隐藏选项栏
             if (selectedPrompt == null) {
-                XposedBridge.log(TAG + ": No available prompt for sender: " + senderQQ + ", hiding option bar");
+                debugLog(TAG + ": No available prompt for sender: " + senderQQ + ", hiding option bar");
                 bar.setVisibility(View.GONE);
                 return;
             }
             
             String customPrompt = selectedPrompt.content;
-            XposedBridge.log(TAG + ": Using prompt: " + selectedPrompt.name + " for sender: " + senderQQ);
+            debugLog(TAG + ": Using prompt: " + selectedPrompt.name + " for sender: " + senderQQ);
             
             // 提交到限流队列（带优先级、上下文、发送者QQ和自定义提示词）
             // 使用支持重试的回调接口
@@ -492,7 +532,7 @@ public class MessageInterceptor {
         bar.addView(reloadBtn);
         bar.setVisibility(View.VISIBLE);
         
-        XposedBridge.log(TAG + ": Showing reload button after all retries failed");
+        debugLog(TAG + ": Showing reload button after all retries failed");
     }
 
     private static void useDictionary(Context context, LinearLayout bar, Object chatMessage) {
@@ -506,10 +546,10 @@ public class MessageInterceptor {
     private static void populateBarAndShow(Context context, LinearLayout bar, List<String> options, Object chatMessage) {
         bar.removeAllViews();
         
-        XposedBridge.log(TAG + ": populateBarAndShow - options count=" + (options != null ? options.size() : "null"));
+        debugLog(TAG + ": populateBarAndShow - options count=" + (options != null ? options.size() : "null"));
         
         if (options == null || options.isEmpty()) {
-            XposedBridge.log(TAG + ": No options available, hiding bar");
+            debugLog(TAG + ": No options available, hiding bar");
             bar.setVisibility(View.GONE); // 没有选项时隐藏
             return;
         }
@@ -572,10 +612,10 @@ public class MessageInterceptor {
                 }
             } catch (Throwable ignored) {}
             
-            XposedBridge.log(TAG + ": 提取引用信息 - msgId=" + replyMsgId + ", seq=" + replyMsgSeq + ", nick=" + replyNick);
+            debugLog(TAG + ": 提取引用信息 - msgId=" + replyMsgId + ", seq=" + replyMsgSeq + ", nick=" + replyNick);
             
         } catch (Throwable t) {
-            XposedBridge.log(TAG + ": 提取引用信息失败: " + t.getMessage());
+            debugLog(TAG + ": 提取引用信息失败: " + t.getMessage());
         }
         
         // 保存引用信息供点击事件使用
@@ -584,7 +624,7 @@ public class MessageInterceptor {
         final String finalReplyNick = replyNick;
         final String finalReplyContent = replyContent;
         
-        XposedBridge.log(TAG + ": Adding " + options.size() + " options to bar");
+        debugLog(TAG + ": Adding " + options.size() + " options to bar");
         for (String option : options) {
             TextView tv = new TextView(context);
             tv.setText(option);
@@ -610,7 +650,7 @@ public class MessageInterceptor {
             
             // 单击事件 - 直接发送消息
             tv.setOnClickListener(v -> {
-                XposedBridge.log(TAG + ": 选项被点击: " + option);
+                debugLog(TAG + ": 选项被点击: " + option);
                 sendMessage(context, option, chatMessage);
             });
             
@@ -627,7 +667,7 @@ public class MessageInterceptor {
         }
         
         bar.setVisibility(View.VISIBLE); // 有选项时显示
-        XposedBridge.log(TAG + ": Option bar populated and made visible (单击=发送, 长按=编辑/引用)");
+        debugLog(TAG + ": Option bar populated and made visible (单击=发送, 长按=编辑/引用)");
     }
 
 
@@ -668,7 +708,7 @@ public class MessageInterceptor {
             Toast.makeText(context, "已发送: " + text, Toast.LENGTH_SHORT).show();
             
         } catch (Exception e) {
-            XposedBridge.log(TAG + ": Failed to send message: " + e.getMessage());
+            debugLog(TAG + ": Failed to send message: " + e.getMessage());
             Toast.makeText(context, "发送失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
@@ -796,7 +836,7 @@ public class MessageInterceptor {
         replyBtn.setOnClickListener(v -> {
             String modifiedText = editText.getText().toString().trim();
             if (!modifiedText.isEmpty()) {
-                XposedBridge.log(TAG + ": 引用发送 - msgId=" + replyMsgId + ", text=" + modifiedText);
+                debugLog(TAG + ": 引用发送 - msgId=" + replyMsgId + ", text=" + modifiedText);
                 // 尝试发送引用回复，如果失败会自动回退到普通发送
                 SendMessageHelper.sendReplyMessageNT(context, chatMessage, modifiedText,
                     replyMsgId, replyMsgSeq, replyNick, replyContent);
@@ -950,7 +990,7 @@ public class MessageInterceptor {
             } catch (Exception e) {}
 
             if (handleUIState != null) {
-                XposedBridge.log(TAG + ": Found handleUIState method");
+                debugLog(TAG + ": Found handleUIState method");
                 XposedBridge.hookMethod(handleUIState, new XC_MethodHook() {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) throws Throwable {
@@ -999,7 +1039,7 @@ public class MessageInterceptor {
             }
             
             if (bindMethod != null) {
-                XposedBridge.log(TAG + ": Found bind method");
+                debugLog(TAG + ": Found bind method");
                 XposedBridge.hookMethod(bindMethod, new XC_MethodHook() {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) throws Throwable {
@@ -1010,11 +1050,11 @@ public class MessageInterceptor {
                 return;
             }
             
-            XposedBridge.log(TAG + ": Failed to find handleUIState or bind method in AIOBubbleMsgItemVB");
+            debugLog(TAG + ": Failed to find handleUIState or bind method in AIOBubbleMsgItemVB");
 
         } catch (Throwable t) {
-            XposedBridge.log(TAG + ": Error in hookAIOBubbleMsgItemVB: " + t.getMessage());
-            XposedBridge.log(t);
+            debugLog(TAG + ": Error in hookAIOBubbleMsgItemVB: " + t.getMessage());
+            debugLog(t);
         }
     }
 
@@ -1048,23 +1088,23 @@ public class MessageInterceptor {
                         currentCtx = ((android.content.ContextWrapper) currentCtx).getBaseContext();
                     }
                 }
-                // XposedBridge.log(TAG + ": [Context] Activity/Context: " + activityName);
+                // debugLog(TAG + ": [Context] Activity/Context: " + activityName);
                 
                 // 【转发消息过滤】如果是转发消息详情页，则不显示AI选项条
                 if (activityName != null && activityName.contains("MultiForwardActivity")) {
-                    XposedBridge.log(TAG + ": ⚠️ Skipping forwarded message in MultiForwardActivity");
+                    debugLog(TAG + ": ⚠️ Skipping forwarded message in MultiForwardActivity");
                     return;
                 }
             } catch (Throwable t) {
-                // XposedBridge.log(TAG + ": [Context] Error getting activity: " + t.getMessage());
+                // debugLog(TAG + ": [Context] Error getting activity: " + t.getMessage());
             }
             
             // 【方法2】识别 ViewHolder 类型
             try {
                 String viewHolderName = aioBubbleMsgItemVB.getClass().getName();
-                // XposedBridge.log(TAG + ": [ViewHolder] Type: " + viewHolderName);
+                // debugLog(TAG + ": [ViewHolder] Type: " + viewHolderName);
             } catch (Throwable t) {
-                // XposedBridge.log(TAG + ": [ViewHolder] Error: " + t.getMessage());
+                // debugLog(TAG + ": [ViewHolder] Error: " + t.getMessage());
             }
             
             // 【方法3】识别 RecyclerView 的 Adapter 类型 (使用反射)
@@ -1081,23 +1121,23 @@ public class MessageInterceptor {
                             Method getAdapterMethod = parentClass.getMethod("getAdapter");
                             Object adapter = getAdapterMethod.invoke(parent);
                             if (adapter != null) {
-                                // XposedBridge.log(TAG + ": [Adapter] Type: " + adapter.getClass().getName());
+                                // debugLog(TAG + ": [Adapter] Type: " + adapter.getClass().getName());
                             } else {
-                                // XposedBridge.log(TAG + ": [Adapter] Adapter is null");
+                                // debugLog(TAG + ": [Adapter] Adapter is null");
                             }
                         } catch (NoSuchMethodException e) {
                             // 可能是混淆后的名字，或者不是标准的RecyclerView
-                            // XposedBridge.log(TAG + ": [Adapter] getAdapter method not found on " + parentClass.getName());
+                            // debugLog(TAG + ": [Adapter] getAdapter method not found on " + parentClass.getName());
                         }
                         break;
                     }
                     parent = parent.getParent();
                 }
                 if (!foundRecyclerView) {
-                    // XposedBridge.log(TAG + ": [Adapter] RecyclerView not found in parent hierarchy");
+                    // debugLog(TAG + ": [Adapter] RecyclerView not found in parent hierarchy");
                 }
             } catch (Throwable t) {
-                XposedBridge.log(TAG + ": [Adapter] Error: " + t.getMessage());
+                debugLog(TAG + ": [Adapter] Error: " + t.getMessage());
             }
             
             // Check if module is enabled
@@ -1121,7 +1161,7 @@ public class MessageInterceptor {
                 }
             } catch (Throwable t) {
                 // 获取失败时 isSelfBySenderUin 保持 false
-                // XposedBridge.log(TAG + ": [isSelf] Failed to compare senderUin: " + t.getMessage());
+                // debugLog(TAG + ": [isSelf] Failed to compare senderUin: " + t.getMessage());
             }
             
             // 【宽松验证】sendType == 1 或 senderUin == currentUin，任一条件满足就认为是自己发送的消息
@@ -1134,18 +1174,18 @@ public class MessageInterceptor {
             try {
                 int subMsgType = XposedHelpers.getIntField(msgRecord, "subMsgType");
                 
-                // XposedBridge.log(TAG + ": ===== Message Type Analysis =====");
-                // XposedBridge.log(TAG + ": msgType=" + msgType + ", subMsgType=" + subMsgType);
-                // XposedBridge.log(TAG + ": sendType=" + sendType);
+                // debugLog(TAG + ": ===== Message Type Analysis =====");
+                // debugLog(TAG + ": msgType=" + msgType + ", subMsgType=" + subMsgType);
+                // debugLog(TAG + ": sendType=" + sendType);
                 
                 if (msgType == 11 && subMsgType == 7) {
-                    // XposedBridge.log(TAG + ": ⚠️ FORWARDED CHAT RECORD CONTAINER - SKIPPING!");
+                    // debugLog(TAG + ": ⚠️ FORWARDED CHAT RECORD CONTAINER - SKIPPING!");
                     return; // 跳过转发聊天记录容器
                 }
                 
-                // XposedBridge.log(TAG + ": ================================");
+                // debugLog(TAG + ": ================================");
             } catch (Throwable t) {
-                // XposedBridge.log(TAG + ": Error detecting forwarded message: " + t.getMessage());
+                // debugLog(TAG + ": Error detecting forwarded message: " + t.getMessage());
             }
             
             // 5 = Gray Tips (Revoke), 3 = File, 7 = Video
@@ -1181,31 +1221,31 @@ public class MessageInterceptor {
                 senderUin = String.valueOf(senderUinObj);
                 String filterMode = ConfigManager.getFilterMode();
                 
-                // XposedBridge.log(TAG + ": Filter - senderUin=" + senderUin + ", mode=" + filterMode);
+                // debugLog(TAG + ": Filter - senderUin=" + senderUin + ", mode=" + filterMode);
                 
                 if ("blacklist".equals(filterMode)) {
                     if (ConfigManager.isInBlacklist(senderUin)) {
-                        // XposedBridge.log(TAG + ": ✗ BLOCKED by blacklist: " + senderUin);
+                        // debugLog(TAG + ": ✗ BLOCKED by blacklist: " + senderUin);
                         return; // 不通过过滤，不添加选项条
                     }
                 } else if ("whitelist".equals(filterMode)) {
                     if (!ConfigManager.isInWhitelist(senderUin)) {
-                        // XposedBridge.log(TAG + ": ✗ BLOCKED by whitelist (not in list): " + senderUin);
+                        // debugLog(TAG + ": ✗ BLOCKED by whitelist (not in list): " + senderUin);
                         return; // 不通过过滤，不添加选项条
                     }
                 }
-                // XposedBridge.log(TAG + ": ✓ PASSED filter: " + senderUin);
+                // debugLog(TAG + ": ✓ PASSED filter: " + senderUin);
                 
                 // 【详细调试日志】已禁用
-                // XposedBridge.log(TAG + ": isSelf=" + isSelf);
-                // XposedBridge.log(TAG + ": senderUin=" + senderUin);
+                // debugLog(TAG + ": isSelf=" + isSelf);
+                // debugLog(TAG + ": senderUin=" + senderUin);
                 // if (msgContent != null && !msgContent.isEmpty()) {
                 //     String contentPreview = msgContent.length() > 50 ? msgContent.substring(0, 50) + "..." : msgContent;
-                //     XposedBridge.log(TAG + ": msgContent=" + contentPreview);
+                //     debugLog(TAG + ": msgContent=" + contentPreview);
                 // }
             } catch (Throwable t) {
-                // XposedBridge.log(TAG + ": Error filtering by list: " + t.getMessage());
-                // XposedBridge.log(t);
+                // debugLog(TAG + ": Error filtering by list: " + t.getMessage());
+                // debugLog(t);
                 return; // 过滤失败时不添加选项条
             }
             
@@ -1215,7 +1255,7 @@ public class MessageInterceptor {
                 Object msgIdObj = XposedHelpers.getObjectField(msgRecord, "msgId");
                 msgId = String.valueOf(msgIdObj);
             } catch (Throwable t) {
-                XposedBridge.log(TAG + ": Failed to get msgId: " + t.getMessage());
+                debugLog(TAG + ": Failed to get msgId: " + t.getMessage());
             }
             
             // 保存消息到上下文缓存（带去重）
@@ -1238,7 +1278,7 @@ public class MessageInterceptor {
                     }
                 } catch (Throwable t) {
                     // 字段获取失败
-                    XposedBridge.log(TAG + ": Failed to get sender name: " + t.getMessage());
+                    debugLog(TAG + ": Failed to get sender name: " + t.getMessage());
                 }
                 
                 // 如果所有尝试都失败，使用UIN
@@ -1251,7 +1291,7 @@ public class MessageInterceptor {
                     Object peerUinObj = XposedHelpers.getObjectField(msgRecord, "peerUin");
                     peerUin = String.valueOf(peerUinObj);
                 } catch (Throwable t) {
-                    XposedBridge.log(TAG + ": Failed to get peerUin: " + t.getMessage());
+                    debugLog(TAG + ": Failed to get peerUin: " + t.getMessage());
                 }
 
                 // 使用peerUin作为conversationId（群聊时为群号，私聊时为对方QQ）
@@ -1274,17 +1314,17 @@ public class MessageInterceptor {
                         List<?> elements = (List<?>) XposedHelpers.getObjectField(msgRecord, "elements");
                         if (elements != null && !elements.isEmpty()) {
                             // 【调试日志已禁用】
-                            // XposedBridge.log(TAG + ": Elements count: " + elements.size());
+                            // debugLog(TAG + ": Elements count: " + elements.size());
                             // for (int i = 0; i < elements.size(); i++) {
                             //     Object element = elements.get(i);
-                            //     XposedBridge.log(TAG + ":   [" + i + "] " + element.getClass().getSimpleName());
+                            //     debugLog(TAG + ":   [" + i + "] " + element.getClass().getSimpleName());
                             //     
                             //     // 尝试所有可能的引用字段名
                             //     for (String fieldName : new String[]{"replyElement", "g", "h"}) {
                             //         try {
                             //             Object field = XposedHelpers.getObjectField(element, fieldName);
                             //             if (field != null) {
-                            //                 XposedBridge.log(TAG + ":     ." + fieldName + " exists: " + field.getClass().getSimpleName());
+                            //                 debugLog(TAG + ":     ." + fieldName + " exists: " + field.getClass().getSimpleName());
                             //             }
                             //         } catch (Throwable ignored) {}
                             //     }
@@ -1324,7 +1364,7 @@ public class MessageInterceptor {
                                                     // 简单的合法性检查（避免提取到过长的错误内容）
                                                     if (potentialName.length() < 20) {
                                                         replySenderName = potentialName;
-                                                        // XposedBridge.log(TAG + ": Extracted reply sender from content: " + replySenderName);
+                                                        // debugLog(TAG + ": Extracted reply sender from content: " + replySenderName);
                                                     }
                                                 }
                                             }
@@ -1361,7 +1401,7 @@ public class MessageInterceptor {
                                             // 格式: 原消息内容 (回复 @被引用者: "被引用内容")
                                             msgContent = msgContent + " (回复 @" + replySenderName + ": \"" + replyText + "\")";
                                             
-                                            XposedBridge.log(TAG + ": ✓ 已将引用信息整合到消息内容");
+                                            debugLog(TAG + ": ✓ 已将引用信息整合到消息内容");
                                         }
                                         break; // 只处理第一个replyElement
                                     }
@@ -1371,7 +1411,7 @@ public class MessageInterceptor {
                             }
                         }
                     } catch (Throwable t) {
-                        XposedBridge.log(TAG + ": Error extracting reply content: " + t.getMessage());
+                        debugLog(TAG + ": Error extracting reply content: " + t.getMessage());
                     }
                     
                     // 【修改自己消息的显示格式为"昵称[我]"】
@@ -1382,7 +1422,7 @@ public class MessageInterceptor {
                     MessageContextManager.addMessage(peerUin, senderName, msgContent, isSelf, msgId, msgTime);
                 }
             } catch (Throwable t) {
-                XposedBridge.log(TAG + ": Error saving message to context: " + t.getMessage());
+                debugLog(TAG + ": Error saving message to context: " + t.getMessage());
             }
             
             // 【只为对方消息创建选项栏和好感度视图，自己的消息不显示UI】
@@ -1412,7 +1452,7 @@ public class MessageInterceptor {
                         }
                         
                         // 【调试日志】打印好感度获取结果
-                        // XposedBridge.log(TAG + ": [Affinity] senderUin=" + finalSenderUin + ", affinity=" + affinity);
+                        // debugLog(TAG + ": [Affinity] senderUin=" + finalSenderUin + ", affinity=" + affinity);
                         
                         // 【修改】只有当好感度有效时才创建视图，无好感度数据的用户不显示
                         if (affinity >= 0) {
@@ -1423,7 +1463,7 @@ public class MessageInterceptor {
                             addAffinityViewToLayout(context, rootView, affinityView, msgRecord);
                         }
                     } catch (Throwable t) {
-                        XposedBridge.log(TAG + ": [Affinity] Error: " + t.getMessage());
+                        debugLog(TAG + ": [Affinity] Error: " + t.getMessage());
                     }
                 }
                 
@@ -1437,7 +1477,7 @@ public class MessageInterceptor {
                 
                 long currentTime = System.currentTimeMillis();
                 if (!hasCachedOptions && Math.abs(currentTime - msgTime) > thresholdMs) {
-                    // XposedBridge.log(TAG + ": ⏳ Skipping option bar for old message without cache (diff=" + (currentTime - msgTime) + "ms)");
+                    // debugLog(TAG + ": ⏳ Skipping option bar for old message without cache (diff=" + (currentTime - msgTime) + "ms)");
                     return; 
                 }
 
@@ -1517,11 +1557,11 @@ public class MessageInterceptor {
                 }
             }
             
-            // XposedBridge.log(TAG + ": Successfully added option bar to QQNT message");
+            // debugLog(TAG + ": Successfully added option bar to QQNT message");
 
         } catch (Throwable t) {
-            XposedBridge.log(TAG + ": Error processing QQNT message: " + t.getMessage());
-            XposedBridge.log(t);
+            debugLog(TAG + ": Error processing QQNT message: " + t.getMessage());
+            debugLog(t);
         }
     }
 
@@ -1626,7 +1666,7 @@ public class MessageInterceptor {
             if (msgBubbleId == -1) {
                 // 移除已添加的视图
                 rootView.removeView(affinityView);
-                XposedBridge.log(TAG + ": [Affinity] Could not find message bubble, skipping affinity view");
+                debugLog(TAG + ": [Affinity] Could not find message bubble, skipping affinity view");
                 return;
             }
             
@@ -1645,7 +1685,7 @@ public class MessageInterceptor {
             XposedHelpers.callMethod(constraintSet, "applyTo", rootView);
             
         } catch (Throwable t) {
-            XposedBridge.log(TAG + ": [Affinity] Error adding affinity view: " + t.getMessage());
+            debugLog(TAG + ": [Affinity] Error adding affinity view: " + t.getMessage());
             // 出错时移除视图
             try {
                 rootView.removeView(affinityView);
@@ -1711,12 +1751,12 @@ public class MessageInterceptor {
             int msgBubbleId = -1;
 
             // 1. BubbleLayout Class Name Search (Priority)
-            // XposedBridge.log(TAG + ": Trying to find bubble via BubbleLayout class name...");
+            // debugLog(TAG + ": Trying to find bubble via BubbleLayout class name...");
             for (int i = 0; i < rootView.getChildCount(); i++) {
                 View child = rootView.getChildAt(i);
                 if (child.getClass().getName().contains("BubbleLayout") && child.getId() != View.NO_ID) {
                     msgBubbleId = child.getId();
-                    // XposedBridge.log(TAG + ": Found bubble via class name, ID: " + msgBubbleId);
+                    // debugLog(TAG + ": Found bubble via class name, ID: " + msgBubbleId);
                     break;
                 }
             }
@@ -1725,7 +1765,7 @@ public class MessageInterceptor {
             if (msgBubbleId == -1) {
                 String msgContent = getMessageContentNT(msgRecord);
                 if (!msgContent.isEmpty()) {
-                    XposedBridge.log(TAG + ": BubbleLayout not found, trying text content: " + msgContent);
+                    debugLog(TAG + ": BubbleLayout not found, trying text content: " + msgContent);
                     View textContainer = findViewWithText(rootView, msgContent);
                     if (textContainer != null) {
                         View bubble = textContainer;
@@ -1735,7 +1775,7 @@ public class MessageInterceptor {
                         
                         if (bubble.getParent() == rootView && bubble.getId() != View.NO_ID) {
                             msgBubbleId = bubble.getId();
-                            XposedBridge.log(TAG + ": Found bubble via text content, ID: " + msgBubbleId + ", Class: " + bubble.getClass().getName());
+                            debugLog(TAG + ": Found bubble via text content, ID: " + msgBubbleId + ", Class: " + bubble.getClass().getName());
                         }
                     }
                 }
@@ -1743,12 +1783,12 @@ public class MessageInterceptor {
 
             // 3. LinearLayout Fallback (Last Resort)
             if (msgBubbleId == -1) {
-                XposedBridge.log(TAG + ": Text search failed, trying LinearLayout fallback...");
+                debugLog(TAG + ": Text search failed, trying LinearLayout fallback...");
                 for (int i = 0; i < rootView.getChildCount(); i++) {
                     View child = rootView.getChildAt(i);
                     if (child instanceof LinearLayout && child.getId() != View.NO_ID) {
                         msgBubbleId = child.getId();
-                        XposedBridge.log(TAG + ": Found bubble via LinearLayout fallback, ID: " + msgBubbleId);
+                        debugLog(TAG + ": Found bubble via LinearLayout fallback, ID: " + msgBubbleId);
                         break;
                     }
                 }
@@ -1777,14 +1817,14 @@ public class MessageInterceptor {
                 
                 // Apply constraints
                 XposedHelpers.callMethod(constraintSet, "applyTo", rootView);
-                // XposedBridge.log(TAG + ": Applied ConstraintSet layout with margins");
+                // debugLog(TAG + ": Applied ConstraintSet layout with margins");
             } else {
-                XposedBridge.log(TAG + ": Could not find message bubble ID for ConstraintLayout");
+                debugLog(TAG + ": Could not find message bubble ID for ConstraintLayout");
             }
             
         } catch (Exception e) {
-            XposedBridge.log(TAG + ": Error handling ConstraintLayout: " + e.getMessage());
-            XposedBridge.log(e);
+            debugLog(TAG + ": Error handling ConstraintLayout: " + e.getMessage());
+            debugLog(e);
             // Fallback to simple add if failed
             if (optionBar.getParent() == null) {
                 rootView.addView(optionBar);
@@ -2165,7 +2205,7 @@ public class MessageInterceptor {
         try {
             // 尝试从 msgRecord 中提取 msgId (long 类型)
             Object msgIdObj = XposedHelpers.getObjectField(msgRecord, "msgId");
-            XposedBridge.log(TAG + ": [WithActions] msgIdObj=" + msgIdObj + " (type=" + (msgIdObj != null ? msgIdObj.getClass().getName() : "null") + ")");
+            debugLog(TAG + ": [WithActions] msgIdObj=" + msgIdObj + " (type=" + (msgIdObj != null ? msgIdObj.getClass().getName() : "null") + ")");
             if (msgIdObj instanceof Long) {
                 replyMsgId = (Long) msgIdObj;
             } else if (msgIdObj != null) {
@@ -2212,10 +2252,10 @@ public class MessageInterceptor {
                 replyContent = replyNick + ":" + msgContent;
             }
             
-            XposedBridge.log(TAG + ": [WithActions] 提取引用信息 - msgId=" + replyMsgId + ", seq=" + replyMsgSeq + ", nick=" + replyNick);
+            debugLog(TAG + ": [WithActions] 提取引用信息 - msgId=" + replyMsgId + ", seq=" + replyMsgSeq + ", nick=" + replyNick);
             
         } catch (Throwable t) {
-            XposedBridge.log(TAG + ": [WithActions] 提取引用信息失败: " + t.getMessage());
+            debugLog(TAG + ": [WithActions] 提取引用信息失败: " + t.getMessage());
         }
         
         // 保存引用信息供点击事件使用
@@ -2288,7 +2328,7 @@ public class MessageInterceptor {
             
             return content.toString();
         } catch (Exception e) {
-            XposedBridge.log(TAG + ": Failed to extract message content: " + e.getMessage());
+            debugLog(TAG + ": Failed to extract message content: " + e.getMessage());
             return "";
         }
     }
@@ -2397,7 +2437,7 @@ public class MessageInterceptor {
                     }
                 }
                 
-                // XposedBridge.log(TAG + ": [DEBUG] Hooked " + hookedCount + " methods in " + className);
+                // debugLog(TAG + ": [DEBUG] Hooked " + hookedCount + " methods in " + className);
             } catch (Throwable t) {
                 // 类不存在或其他错误，跳过
             }
@@ -2413,13 +2453,13 @@ public class MessageInterceptor {
             String methodName = param.method.getName();
             String className = param.thisObject != null ? param.thisObject.getClass().getSimpleName() : "static";
             
-            //XposedBridge.log(TAG + ": [DEBUG] " + className + "." + methodName + " called");
-            //XposedBridge.log(TAG + ":   Args count: " + param.args.length);
+            //debugLog(TAG + ": [DEBUG] " + className + "." + methodName + " called");
+            //debugLog(TAG + ":   Args count: " + param.args.length);
             
             for (int i = 0; i < param.args.length; i++) {
                 Object arg = param.args[i];
                 String type = arg != null ? arg.getClass().getName() : "null";
-                //XposedBridge.log(TAG + ":   arg[" + i + "] (" + type + "): " + arg);
+                //debugLog(TAG + ":   arg[" + i + "] (" + type + "): " + arg);
                 
                 // 如果参数是 List，尝试打印第一个元素的详细信息
                 if (arg instanceof List) {
@@ -2428,29 +2468,29 @@ public class MessageInterceptor {
                         for (int j = 0; j < list.size(); j++) {
                             Object item = list.get(j);
                             if (item != null) {
-                                //XposedBridge.log(TAG + ":     List[" + j + "] class: " + item.getClass().getName());
+                                //debugLog(TAG + ":     List[" + j + "] class: " + item.getClass().getName());
                                 // 反射打印字段
                                 try {
                                     for (Field f : item.getClass().getDeclaredFields()) {
                                         f.setAccessible(true);
                                         Object val = f.get(item);
                                         String fieldType = f.getType().getName();
-                                        //XposedBridge.log(TAG + ":       Field '" + f.getName() + "' (" + fieldType + "): " + val);
+                                        //debugLog(TAG + ":       Field '" + f.getName() + "' (" + fieldType + "): " + val);
                                         
                                         // 深入分析 AIOElementType 相关对象
                                         if (val != null && val.getClass().getName().contains("AIOElementType")) {
-                                            //XposedBridge.log(TAG + ":         -> Found AIOElementType: " + val.getClass().getName());
+                                            //debugLog(TAG + ":         -> Found AIOElementType: " + val.getClass().getName());
                                             analyzeAIOElementType(val);
                                         }
                                         
                                         // 深入分析可能的 ReplyElement
                                         if (val != null && (fieldType.contains("Reply") || f.getName().equals("h"))) {
-                                            //XposedBridge.log(TAG + ":         -> Potential ReplyElement found!");
+                                            //debugLog(TAG + ":         -> Potential ReplyElement found!");
                                             analyzeReplyElement(val);
                                         }
                                     }
                                 } catch (Exception e) {
-                                    //XposedBridge.log(TAG + ":       Error inspecting list item: " + e.getMessage());
+                                    //debugLog(TAG + ":       Error inspecting list item: " + e.getMessage());
                                 }
                             }
                         }
@@ -2458,7 +2498,7 @@ public class MessageInterceptor {
                 }
             }
         } catch (Throwable t) {
-            XposedBridge.log(TAG + ": [DEBUG] Error logging method call: " + t.getMessage());
+            debugLog(TAG + ": [DEBUG] Error logging method call: " + t.getMessage());
         }
     }
     
@@ -2467,18 +2507,18 @@ public class MessageInterceptor {
      */
     private static void analyzeAIOElementType(Object element) {
         try {
-            //XposedBridge.log(TAG + ":         ┌─ AIOElementType 分析 ─┐");
+            //debugLog(TAG + ":         ┌─ AIOElementType 分析 ─┐");
             for (Field f : element.getClass().getDeclaredFields()) {
                 f.setAccessible(true);
                 Object val = f.get(element);
                 String fieldType = f.getType().getSimpleName();
                 String valStr = val != null ? val.toString() : "null";
                 if (valStr.length() > 100) valStr = valStr.substring(0, 100) + "...";
-                XposedBridge.log(TAG + ":         │ " + f.getName() + " (" + fieldType + "): " + valStr);
+                debugLog(TAG + ":         │ " + f.getName() + " (" + fieldType + "): " + valStr);
             }
-           // XposedBridge.log(TAG + ":         └─────────────────────┘");
+           // debugLog(TAG + ":         └─────────────────────┘");
         } catch (Throwable t) {
-            XposedBridge.log(TAG + ":         分析AIOElementType失败: " + t.getMessage());
+            debugLog(TAG + ":         分析AIOElementType失败: " + t.getMessage());
         }
     }
     
@@ -2488,19 +2528,19 @@ public class MessageInterceptor {
      */
     private static void analyzeReplyElement(Object replyElement) {
         try {
-            //XposedBridge.log(TAG + ":         ┌─ ReplyElement 分析 ─┐");
-            //XposedBridge.log(TAG + ":         │ Class: " + replyElement.getClass().getName());
+            //debugLog(TAG + ":         ┌─ ReplyElement 分析 ─┐");
+            //debugLog(TAG + ":         │ Class: " + replyElement.getClass().getName());
             for (Field f : replyElement.getClass().getDeclaredFields()) {
                 f.setAccessible(true);
                 Object val = f.get(replyElement);
                 String fieldType = f.getType().getSimpleName();
                 String valStr = val != null ? val.toString() : "null";
                 if (valStr.length() > 100) valStr = valStr.substring(0, 100) + "...";
-                XposedBridge.log(TAG + ":         │ " + f.getName() + " (" + fieldType + "): " + valStr);
+                debugLog(TAG + ":         │ " + f.getName() + " (" + fieldType + "): " + valStr);
             }
-            //XposedBridge.log(TAG + ":         └─────────────────────┘");
+            //debugLog(TAG + ":         └─────────────────────┘");
         } catch (Throwable t) {
-            XposedBridge.log(TAG + ":         分析ReplyElement失败: " + t.getMessage());
+            debugLog(TAG + ":         分析ReplyElement失败: " + t.getMessage());
         }
     }
 }

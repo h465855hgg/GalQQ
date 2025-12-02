@@ -20,6 +20,14 @@ public class MessageContextManager {
     
     private static final String TAG = "GalQQ.ContextManager";
     
+    private static void debugLog(String message) {
+        try {
+            if (top.galqq.config.ConfigManager.isDebugHookLogEnabled()) {
+                de.robv.android.xposed.XposedBridge.log(message);
+            }
+        } catch (Throwable ignored) {}
+    }
+    
     // 每个会话最多缓存的消息数
     private static final int MAX_MESSAGES_PER_CONVERSATION = 50;
     
@@ -118,7 +126,7 @@ public class MessageContextManager {
         // XposedBridge.log(TAG + ":   timestamp=" + msgTime);
         
         if (conversationId == null || content == null || content.trim().isEmpty()) {
-            XposedBridge.log(TAG + ": ❌ 拒绝添加：conversationId或content为空");
+            debugLog(TAG + ": ❌ 拒绝添加：conversationId或content为空");
             return;
         }
         
@@ -132,7 +140,7 @@ public class MessageContextManager {
                 
                 context = new ConversationContext();
                 contextMap.put(conversationId, context);
-                XposedBridge.log(TAG + ": Created new conversation context: " + conversationId);
+                debugLog(TAG + ": Created new conversation context: " + conversationId);
             }
             
             // 去重：如果msgId不为null，检查是否已存在
@@ -166,7 +174,7 @@ public class MessageContextManager {
             //XposedBridge.log(TAG + ":   当前会话消息数=" + context.messages.size());
             
         } catch (Exception e) {
-            XposedBridge.log(TAG + ": Error adding message: " + e.getMessage());
+            debugLog(TAG + ": Error adding message: " + e.getMessage());
         }
     }
     
@@ -189,11 +197,11 @@ public class MessageContextManager {
             }
             
             List<ChatMessage> messages = context.getRecentMessages(count);
-            XposedBridge.log(TAG + ": Retrieved " + messages.size() + " context messages for " + conversationId);
+            debugLog(TAG + ": Retrieved " + messages.size() + " context messages for " + conversationId);
             return messages;
             
         } catch (Exception e) {
-            XposedBridge.log(TAG + ": Error getting context: " + e.getMessage());
+            debugLog(TAG + ": Error getting context: " + e.getMessage());
             return new ArrayList<>();
         }
     }
@@ -221,11 +229,11 @@ public class MessageContextManager {
             
             if (oldestKey != null) {
                 contextMap.remove(oldestKey);
-                XposedBridge.log(TAG + ": Cleaned up old conversation: " + oldestKey);
+                debugLog(TAG + ": Cleaned up old conversation: " + oldestKey);
             }
             
         } catch (Exception e) {
-            XposedBridge.log(TAG + ": Error during cleanup: " + e.getMessage());
+            debugLog(TAG + ": Error during cleanup: " + e.getMessage());
         }
     }
     
@@ -237,7 +245,7 @@ public class MessageContextManager {
     public static void clearConversation(String conversationId) {
         if (conversationId != null) {
             contextMap.remove(conversationId);
-            XposedBridge.log(TAG + ": Cleared conversation: " + conversationId);
+            debugLog(TAG + ": Cleared conversation: " + conversationId);
         }
     }
     
@@ -246,7 +254,7 @@ public class MessageContextManager {
      */
     public static void clearAll() {
         contextMap.clear();
-        XposedBridge.log(TAG + ": Cleared all conversations");
+        debugLog(TAG + ": Cleared all conversations");
     }
     
     /**

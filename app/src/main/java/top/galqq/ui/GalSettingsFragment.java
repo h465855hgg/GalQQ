@@ -27,14 +27,27 @@ public class GalSettingsFragment extends PreferenceFragmentCompat {
 
     /**
      * 更新提示词管理的summary显示
+     * 显示第一个启用的提示词名称（按顺序优先级）
      */
     private void updatePromptManagerSummary(Preference pref) {
         java.util.List<ConfigManager.PromptItem> list = ConfigManager.getPromptList();
-        int index = ConfigManager.getCurrentPromptIndex();
-        if (index >= 0 && index < list.size()) {
-            pref.setSummary("当前: " + list.get(index).name + " (共" + list.size() + "个)");
-        } else {
+        if (list.isEmpty()) {
             pref.setSummary("管理多个提示词，点击切换不同风格");
+            return;
+        }
+        // 找到第一个启用的提示词
+        String firstName = null;
+        for (ConfigManager.PromptItem item : list) {
+            if (item.enabled) {
+                firstName = item.name;
+                break;
+            }
+        }
+        if (firstName != null) {
+            pref.setSummary("当前: " + firstName + " (共" + list.size() + "个)");
+        } else {
+            // 所有提示词都被禁用
+            pref.setSummary("所有提示词已禁用 (共" + list.size() + "个)");
         }
     }
 
@@ -440,6 +453,16 @@ public class GalSettingsFragment extends PreferenceFragmentCompat {
             });
         }
         
+        // Debug Hook Log (调试Hook日志)
+        SwitchPreference debugHookLogPref = findPreference(ConfigManager.KEY_DEBUG_HOOK_LOG);
+        if (debugHookLogPref != null) {
+            debugHookLogPref.setChecked(ConfigManager.isDebugHookLogEnabled());
+            debugHookLogPref.setOnPreferenceChangeListener((preference, newValue) -> {
+                ConfigManager.setDebugHookLogEnabled((Boolean) newValue);
+                return true;
+            });
+        }
+        
         // Filter Mode
         androidx.preference.ListPreference filterModePref = findPreference(ConfigManager.KEY_FILTER_MODE);
         if (filterModePref != null) {
@@ -528,6 +551,174 @@ public class GalSettingsFragment extends PreferenceFragmentCompat {
                     android.widget.Toast.makeText(requireContext(), "打开QQ群失败: " + e.getMessage(), android.widget.Toast.LENGTH_SHORT).show();
                     return false;
                 }
+            });
+        }
+        
+        // ========== 代理设置 ==========
+        
+        // Proxy Enabled (启用代理)
+        Preference proxyEnabledSwitch = findPreference(ConfigManager.KEY_PROXY_ENABLED);
+        if (proxyEnabledSwitch != null) {
+            if (proxyEnabledSwitch instanceof androidx.preference.TwoStatePreference) {
+                ((androidx.preference.TwoStatePreference) proxyEnabledSwitch).setChecked(ConfigManager.isProxyEnabled());
+            }
+            proxyEnabledSwitch.setOnPreferenceChangeListener((preference, newValue) -> {
+                ConfigManager.setProxyEnabled((Boolean) newValue);
+                // 重置代理客户端
+                top.galqq.utils.HttpAiClient.resetProxyClient();
+                return true;
+            });
+        }
+        
+        // Proxy Type (代理类型)
+        androidx.preference.ListPreference proxyTypePref = findPreference(ConfigManager.KEY_PROXY_TYPE);
+        if (proxyTypePref != null) {
+            proxyTypePref.setValue(ConfigManager.getProxyType());
+            proxyTypePref.setSummary("当前: " + ConfigManager.getProxyType());
+            proxyTypePref.setOnPreferenceChangeListener((preference, newValue) -> {
+                ConfigManager.setProxyType((String) newValue);
+                proxyTypePref.setSummary("当前: " + newValue);
+                // 重置代理客户端
+                top.galqq.utils.HttpAiClient.resetProxyClient();
+                return true;
+            });
+        }
+        
+        // Proxy Host (代理地址)
+        EditTextPreference proxyHostPref = findPreference(ConfigManager.KEY_PROXY_HOST);
+        if (proxyHostPref != null) {
+            proxyHostPref.setText(ConfigManager.getProxyHost());
+            String host = ConfigManager.getProxyHost();
+            proxyHostPref.setSummary(host.isEmpty() ? "代理服务器IP或域名（如 127.0.0.1）" : "当前: " + host);
+            proxyHostPref.setOnPreferenceChangeListener((preference, newValue) -> {
+                String newHost = (String) newValue;
+                ConfigManager.setProxyHost(newHost);
+                proxyHostPref.setText(newHost);
+                proxyHostPref.setSummary(newHost.isEmpty() ? "代理服务器IP或域名（如 127.0.0.1）" : "当前: " + newHost);
+                // 重置代理客户端
+                top.galqq.utils.HttpAiClient.resetProxyClient();
+                return true;
+            });
+        }
+        
+        // Proxy Port (代理端口)
+        EditTextPreference proxyPortPref = findPreference(ConfigManager.KEY_PROXY_PORT);
+        if (proxyPortPref != null) {
+            proxyPortPref.setText(String.valueOf(ConfigManager.getProxyPort()));
+            proxyPortPref.setSummary("当前: " + ConfigManager.getProxyPort());
+            proxyPortPref.setOnPreferenceChangeListener((preference, newValue) -> {
+                try {
+                    int port = Integer.parseInt((String) newValue);
+                    if (port > 0 && port <= 65535) {
+                        ConfigManager.setProxyPort(port);
+                        proxyPortPref.setText((String) newValue);
+                        proxyPortPref.setSummary("当前: " + port);
+                        // 重置代理客户端
+                        top.galqq.utils.HttpAiClient.resetProxyClient();
+                        return true;
+                    } else {
+                        android.widget.Toast.makeText(requireContext(), "端口范围: 1-65535", android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                } catch (Exception e) {
+                    android.widget.Toast.makeText(requireContext(), "请输入有效的端口号", android.widget.Toast.LENGTH_SHORT).show();
+                }
+                return false;
+            });
+        }
+        
+        // Proxy Auth Enabled (启用代理认证)
+        Preference proxyAuthSwitch = findPreference(ConfigManager.KEY_PROXY_AUTH_ENABLED);
+        if (proxyAuthSwitch != null) {
+            if (proxyAuthSwitch instanceof androidx.preference.TwoStatePreference) {
+                ((androidx.preference.TwoStatePreference) proxyAuthSwitch).setChecked(ConfigManager.isProxyAuthEnabled());
+            }
+            proxyAuthSwitch.setOnPreferenceChangeListener((preference, newValue) -> {
+                ConfigManager.setProxyAuthEnabled((Boolean) newValue);
+                // 重置代理客户端
+                top.galqq.utils.HttpAiClient.resetProxyClient();
+                return true;
+            });
+        }
+        
+        // Proxy Username (代理用户名)
+        EditTextPreference proxyUsernamePref = findPreference(ConfigManager.KEY_PROXY_USERNAME);
+        if (proxyUsernamePref != null) {
+            proxyUsernamePref.setText(ConfigManager.getProxyUsername());
+            String username = ConfigManager.getProxyUsername();
+            proxyUsernamePref.setSummary(username.isEmpty() ? "代理认证用户名" : "当前: " + username);
+            proxyUsernamePref.setOnPreferenceChangeListener((preference, newValue) -> {
+                String newUsername = (String) newValue;
+                ConfigManager.setProxyUsername(newUsername);
+                proxyUsernamePref.setText(newUsername);
+                proxyUsernamePref.setSummary(newUsername.isEmpty() ? "代理认证用户名" : "当前: " + newUsername);
+                // 重置代理客户端
+                top.galqq.utils.HttpAiClient.resetProxyClient();
+                return true;
+            });
+        }
+        
+        // Proxy Password (代理密码)
+        EditTextPreference proxyPasswordPref = findPreference(ConfigManager.KEY_PROXY_PASSWORD);
+        if (proxyPasswordPref != null) {
+            proxyPasswordPref.setText(ConfigManager.getProxyPassword());
+            String password = ConfigManager.getProxyPassword();
+            proxyPasswordPref.setSummary(password.isEmpty() ? "代理认证密码" : "已设置 (*****)");
+            proxyPasswordPref.setOnPreferenceChangeListener((preference, newValue) -> {
+                String newPassword = (String) newValue;
+                ConfigManager.setProxyPassword(newPassword);
+                proxyPasswordPref.setText(newPassword);
+                proxyPasswordPref.setSummary(newPassword.isEmpty() ? "代理认证密码" : "已设置 (*****)");
+                // 重置代理客户端
+                top.galqq.utils.HttpAiClient.resetProxyClient();
+                return true;
+            });
+        }
+        
+        // Test Proxy Button (测试代理连接)
+        Preference testProxyPref = findPreference("gal_test_proxy");
+        if (testProxyPref != null) {
+            testProxyPref.setOnPreferenceClickListener(preference -> {
+                // 检查代理配置
+                if (!ConfigManager.isProxyEnabled()) {
+                    android.widget.Toast.makeText(requireContext(), "请先启用代理", android.widget.Toast.LENGTH_SHORT).show();
+                    return true;
+                }
+                
+                String host = ConfigManager.getProxyHost();
+                
+                if (host == null || host.trim().isEmpty()) {
+                    android.widget.Toast.makeText(requireContext(), "请填写代理地址", android.widget.Toast.LENGTH_SHORT).show();
+                    return true;
+                }
+                
+                android.widget.Toast.makeText(requireContext(), "正在测试代理连接...", android.widget.Toast.LENGTH_SHORT).show();
+                
+                // 使用专门的代理测试方法（不依赖AI API配置）
+                top.galqq.utils.HttpAiClient.testProxyConnection(requireContext(), (success, message) -> {
+                    android.app.Activity activity = getActivity();
+                    if (activity != null && isAdded()) {
+                        activity.runOnUiThread(() -> {
+                            if (success) {
+                                new android.app.AlertDialog.Builder(activity)
+                                    .setTitle("✅ 代理测试成功")
+                                    .setMessage(message)
+                                    .setPositiveButton("确定", null)
+                                    .show();
+                            } else {
+                                new android.app.AlertDialog.Builder(activity)
+                                    .setTitle("❌ 代理测试失败")
+                                    .setMessage(message + "\n\n常见问题排查：\n" +
+                                        "1. 确认代理软件（如Clash）正在运行\n" +
+                                        "2. 检查代理端口是否正确（Clash默认7890）\n" +
+                                        "3. 确认代理类型（HTTP/SOCKS）是否匹配\n" +
+                                        "4. 如果使用127.0.0.1，确保代理允许局域网连接")
+                                    .setPositiveButton("确定", null)
+                                    .show();
+                            }
+                        });
+                    }
+                });
+                return true;
             });
         }
     }

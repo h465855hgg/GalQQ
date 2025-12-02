@@ -73,6 +73,11 @@ public class PromptManagerActivity extends AppCompatTransferActivity {
                 Collections.swap(promptList, fromPosition, toPosition);
                 adapter.notifyItemMoved(fromPosition, toPosition);
                 
+                // 刷新受影响范围内的所有项目序号显示
+                int start = Math.min(fromPosition, toPosition);
+                int end = Math.max(fromPosition, toPosition);
+                adapter.notifyItemRangeChanged(start, end - start + 1);
+                
                 return true;
             }
             

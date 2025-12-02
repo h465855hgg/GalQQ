@@ -26,6 +26,19 @@ public class Initiator {
     public static Class<?> _MessageRecord;
     
     /**
+     * 调试日志输出（受配置开关控制）
+     */
+    private static void debugLog(String message) {
+        try {
+            if (top.galqq.config.ConfigManager.isVerboseLogEnabled()) {
+                XposedBridge.log(message);
+            }
+        } catch (Throwable ignored) {
+            // ConfigManager 未初始化时忽略
+        }
+    }
+    
+    /**
      * 初始化类加载器和常用类引用
      * @param classLoader 宿主应用的类加载器
      */
@@ -40,9 +53,9 @@ public class Initiator {
             _MobileQQ = load("mqq.app.MobileQQ");
             _MessageRecord = load("com.tencent.mobileqq.data.MessageRecord");
             
-            XposedBridge.log("GalQQ.Initiator: 初始化完成，未预加载AppRuntime类");
+            debugLog("GalQQ.Initiator: 初始化完成，未预加载AppRuntime类");
         } catch (Exception e) {
-            XposedBridge.log("GalQQ.Initiator: Failed to preload classes: " + e.getMessage());
+            debugLog("GalQQ.Initiator: Failed to preload classes: " + e.getMessage());
         }
     }
     
@@ -52,79 +65,55 @@ public class Initiator {
      * @return 加载的类对象
      */
     public static Class<?> load(String className) {
-        XposedBridge.log("GalQQ.Initiator: 尝试加载类: " + className);
+        //XposedBridge.log("GalQQ.Initiator: 尝试加载类: " + className);
         
         if (sClassCache.containsKey(className)) {
-            XposedBridge.log("GalQQ.Initiator: 从缓存获取类: " + className);
+            //XposedBridge.log("GalQQ.Initiator: 从缓存获取类: " + className);
             return sClassCache.get(className);
         }
         
         try {
             // 检查是否是AppRuntime类，如果是，使用特殊处理
             if ("mqq.app.AppRuntime".equals(className)) {
-                XposedBridge.log("GalQQ.Initiator: 检测到AppRuntime类，使用特殊处理");
-                
                 // 尝试直接从宿主类加载器获取，避免初始化
                 try {
                     // 使用forName但不初始化类
                     Class<?> clazz = Class.forName(className, false, sHostClassLoader);
                     sClassCache.put(className, clazz);
-                    XposedBridge.log("GalQQ.Initiator: 成功加载AppRuntime类(不初始化): " + clazz.getName());
-                    XposedBridge.log("GalQQ.Initiator: 类的ClassLoader: " + clazz.getClassLoader().getClass().getName());
                     return clazz;
                 } catch (ClassNotFoundException e) {
-                    XposedBridge.log("GalQQ.Initiator: AppRuntime类未找到，尝试其他方式");
+                    debugLog("GalQQ.Initiator: AppRuntime类未找到，尝试其他方式");
                     // 不抛出异常，继续下面的尝试
                 } catch (NoClassDefFoundError e) {
-                    XposedBridge.log("GalQQ.Initiator: AppRuntime类NoClassDefFoundError，尝试其他方式");
+                    debugLog("GalQQ.Initiator: AppRuntime类NoClassDefFoundError，尝试其他方式");
                     // 不抛出异常，继续下面的尝试
                 } catch (LinkageError e) {
-                    XposedBridge.log("GalQQ.Initiator: AppRuntime类LinkageError，尝试其他方式");
+                    debugLog("GalQQ.Initiator: AppRuntime类LinkageError，尝试其他方式");
                     // 不抛出异常，继续下面的尝试
                 }
                 
                 // 如果直接加载失败，返回null，让调用方处理
-                XposedBridge.log("GalQQ.Initiator: 无法加载AppRuntime类，返回null");
+                debugLog("GalQQ.Initiator: 无法加载AppRuntime类，返回null");
                 return null;
             }
             
-            XposedBridge.log("GalQQ.Initiator: 使用ClassLoader加载类: " + className);
-            XposedBridge.log("GalQQ.Initiator: ClassLoader类型: " + sHostClassLoader.getClass().getName());
+            //XposedBridge.log("GalQQ.Initiator: 使用ClassLoader加载类: " + className);
+            //XposedBridge.log("GalQQ.Initiator: ClassLoader类型: " + sHostClassLoader.getClass().getName());
             
             Class<?> clazz = Class.forName(className, false, sHostClassLoader);
             sClassCache.put(className, clazz);
-            XposedBridge.log("GalQQ.Initiator: 成功加载类: " + className + ", 实际类名: " + clazz.getName());
-            XposedBridge.log("GalQQ.Initiator: 类的ClassLoader: " + clazz.getClassLoader().getClass().getName());
             return clazz;
         } catch (ClassNotFoundException e) {
-            XposedBridge.log("GalQQ.Initiator: 类未找到: " + className);
-            XposedBridge.log("GalQQ.Initiator: 错误信息: " + e.getMessage());
-            
-            // 尝试打印更多调试信息
-            XposedBridge.log("GalQQ.Initiator: 当前ClassLoader: " + (sHostClassLoader != null ? sHostClassLoader.getClass().getName() : "null"));
-            
+            debugLog("GalQQ.Initiator: 类未找到: " + className + ", 错误: " + e.getMessage());
             return null;
         } catch (NoClassDefFoundError e) {
-            XposedBridge.log("GalQQ.Initiator: NoClassDefFoundError: " + className);
-            XposedBridge.log("GalQQ.Initiator: 错误信息: " + e.getMessage());
-            
-            // 尝试打印更多调试信息
-            XposedBridge.log("GalQQ.Initiator: 当前ClassLoader: " + (sHostClassLoader != null ? sHostClassLoader.getClass().getName() : "null"));
-            
+            debugLog("GalQQ.Initiator: NoClassDefFoundError: " + className);
             return null;
         } catch (LinkageError e) {
-            XposedBridge.log("GalQQ.Initiator: LinkageError: " + className);
-            XposedBridge.log("GalQQ.Initiator: 错误信息: " + e.getMessage());
-            
-            // 尝试打印更多调试信息
-            XposedBridge.log("GalQQ.Initiator: 当前ClassLoader: " + (sHostClassLoader != null ? sHostClassLoader.getClass().getName() : "null"));
-            
+            debugLog("GalQQ.Initiator: LinkageError: " + className + ", 错误: " + e.getMessage());
             return null;
         } catch (Exception e) {
-            XposedBridge.log("GalQQ.Initiator: 加载类时发生未知错误: " + className);
-            XposedBridge.log("GalQQ.Initiator: 错误类型: " + e.getClass().getName());
-            XposedBridge.log("GalQQ.Initiator: 错误信息: " + e.getMessage());
-            
+            debugLog("GalQQ.Initiator: 加载类时发生未知错误: " + className + ", 类型: " + e.getClass().getName());
             return null;
         }
     }
@@ -144,7 +133,7 @@ public class Initiator {
             sClassCache.put(className, clazz);
             return clazz;
         } catch (ClassNotFoundException e) {
-            XposedBridge.log("GalQQ: Class not found: " + className + ", error: " + e.getMessage());
+            debugLog("GalQQ: Class not found: " + className + ", error: " + e.getMessage());
             return null;
         }
     }
@@ -166,7 +155,7 @@ public class Initiator {
             field.setAccessible(true);
             return field.get(null);
         } catch (Exception e) {
-            XposedBridge.log("GalQQ: Failed to get static field " + fieldName + " from " + className + ": " + e.getMessage());
+            debugLog("GalQQ: Failed to get static field " + fieldName + " from " + className + ": " + e.getMessage());
             return null;
         }
     }
@@ -187,7 +176,7 @@ public class Initiator {
             
             return XposedHelpers.callStaticMethod(clazz, methodName, args);
         } catch (Exception e) {
-            XposedBridge.log("GalQQ: Failed to call static method " + methodName + " from " + className + ": " + e.getMessage());
+            debugLog("GalQQ: Failed to call static method " + methodName + " from " + className + ": " + e.getMessage());
             return null;
         }
     }

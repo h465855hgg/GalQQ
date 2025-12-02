@@ -20,6 +20,14 @@ public class AffinityCache {
 
     private static final String TAG = "GalQQ.AffinityCache";
     
+    private static void debugLog(String message) {
+        try {
+            if (ConfigManager.isVerboseLogEnabled()) {
+                XposedBridge.log(message);
+            }
+        } catch (Throwable ignored) {}
+    }
+    
     // 缓存键
     private static final String KEY_WHO_CARES_ME = "affinity_who_cares_me";
     private static final String KEY_WHO_I_CARE = "affinity_who_i_care";
@@ -84,7 +92,7 @@ public class AffinityCache {
         long age = currentTime - timestamp;
         
         boolean valid = age < CACHE_DURATION_MS;
-        XposedBridge.log(TAG + ": 缓存有效性检查: age=" + (age / 1000) + "s, valid=" + valid);
+        debugLog(TAG + ": 缓存有效性检查: age=" + (age / 1000) + "s, valid=" + valid);
         
         return valid;
     }
@@ -104,7 +112,7 @@ public class AffinityCache {
         ConfigManager.remove(KEY_WHO_CARES_ME);
         ConfigManager.remove(KEY_WHO_I_CARE);
         ConfigManager.remove(KEY_TIMESTAMP);
-        XposedBridge.log(TAG + ": 缓存已清除");
+        debugLog(TAG + ": 缓存已清除");
     }
 
     /**
@@ -122,9 +130,9 @@ public class AffinityCache {
                 json.put(entry.getKey(), entry.getValue());
             }
             ConfigManager.putString(key, json.toString());
-            XposedBridge.log(TAG + ": 保存数据: " + key + ", 共 " + data.size() + " 条");
+            debugLog(TAG + ": 保存数据: " + key + ", 共 " + data.size() + " 条");
         } catch (Exception e) {
-            XposedBridge.log(TAG + ": 保存数据失败: " + e.getMessage());
+            debugLog(TAG + ": 保存数据失败: " + e.getMessage());
         }
     }
 
@@ -152,7 +160,7 @@ public class AffinityCache {
             return result;
             
         } catch (Exception e) {
-            XposedBridge.log(TAG + ": 加载数据失败: " + e.getMessage());
+            debugLog(TAG + ": 加载数据失败: " + e.getMessage());
             return null;
         }
     }
@@ -163,6 +171,6 @@ public class AffinityCache {
     private void updateTimestamp() {
         long timestamp = System.currentTimeMillis();
         ConfigManager.putLong(KEY_TIMESTAMP, timestamp);
-        XposedBridge.log(TAG + ": 更新时间戳: " + timestamp);
+        debugLog(TAG + ": 更新时间戳: " + timestamp);
     }
 }

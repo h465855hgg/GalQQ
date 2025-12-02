@@ -41,6 +41,30 @@ public class Parasitics {
     private static final String TAG = "GalQQ.Parasitics";
     private static boolean __stub_hooked = false;
     private static String sModulePath = null;
+    
+    /**
+     * 调试日志输出（受配置开关控制）
+     */
+    private static void debugLog(String message) {
+        try {
+            if (top.galqq.config.ConfigManager.isVerboseLogEnabled()) {
+                XposedBridge.log(message);
+            }
+        } catch (Throwable ignored) {
+            // ConfigManager 未初始化时忽略
+        }
+    }
+    
+    /**
+     * 错误日志（始终输出）
+     */
+    private static void errorLog(String message) {
+        XposedBridge.log(message);
+    }
+    
+    private static void errorLog(Throwable t) {
+        XposedBridge.log(t);
+    }
 
     public static void setModulePath(String path) {
         sModulePath = path;
@@ -72,7 +96,7 @@ public class Parasitics {
             loader.addProvider(provider);
             res.addLoaders(loader);
         } catch (IOException e) {
-            XposedBridge.log(TAG + ": Failed to inject resources (API 30+): " + e.getMessage());
+            errorLog(TAG + ": Failed to inject resources (API 30+): " + e.getMessage());
         }
     }
 
@@ -85,7 +109,7 @@ public class Parasitics {
             addAssetPath.setAccessible(true);
             addAssetPath.invoke(assets, path);
         } catch (Exception e) {
-            XposedBridge.log(TAG + ": Failed to inject resources (< API 30): " + e.getMessage());
+            errorLog(TAG + ": Failed to inject resources (< API 30): " + e.getMessage());
         }
     }
 
@@ -100,7 +124,7 @@ public class Parasitics {
             if (!needRefresh) {
                 File moduleFile = new File(sModulePath);
                 if (!moduleFile.exists() || !moduleFile.canRead()) {
-                    XposedBridge.log(TAG + ": sModulePath is invalid or unreadable: " + sModulePath);
+                    debugLog(TAG + ": sModulePath is invalid or unreadable: " + sModulePath);
                     needRefresh = true;
                 }
             }
@@ -110,9 +134,9 @@ public class Parasitics {
                 try {
                     Context moduleContext = ctx.createPackageContext("top.galqq", Context.CONTEXT_IGNORE_SECURITY);
                     sModulePath = moduleContext.getApplicationInfo().sourceDir;
-                    XposedBridge.log(TAG + ": Resolved module path via createPackageContext: " + sModulePath);
+                    debugLog(TAG + ": Resolved module path via createPackageContext: " + sModulePath);
                 } catch (Exception e) {
-                    XposedBridge.log(TAG + ": Failed to resolve module path: " + e.getMessage());
+                    errorLog(TAG + ": Failed to resolve module path: " + e.getMessage());
                 }
             }
 
@@ -148,7 +172,7 @@ public class Parasitics {
                     activityManagerClass = Class.forName("android.app.ActivityManager");
                     gDefaultField = activityManagerClass.getDeclaredField("IActivityManagerSingleton");
                 } catch (Exception err2) {
-                    XposedBridge.log(TAG + ": Unable to get IActivityManagerSingleton");
+                    errorLog(TAG + ": Unable to get IActivityManagerSingleton");
                     return;
                 }
             }
@@ -183,10 +207,10 @@ public class Parasitics {
             }
 
             __stub_hooked = true;
-            XposedBridge.log(TAG + ": Activity Proxy initialized");
+            debugLog(TAG + ": Activity Proxy initialized");
         } catch (Exception e) {
-            XposedBridge.log(TAG + ": Failed to init Activity Proxy: " + e.getMessage());
-            XposedBridge.log(e);
+            errorLog(TAG + ": Failed to init Activity Proxy: " + e.getMessage());
+            errorLog(e);
         }
     }
 
@@ -220,7 +244,7 @@ public class Parasitics {
                         wrapper.setClassName(component.getPackageName(), ActProxyMgr.STUB_DEFAULT_ACTIVITY);
                         wrapper.putExtra(ActProxyMgr.STUB_DEFAULT_ACTIVITY, raw); // Use key as marker
                         args[index] = wrapper;
-                        XposedBridge.log(TAG + ": Intercepted startActivity for " + component.getClassName());
+                        debugLog(TAG + ": Intercepted startActivity for " + component.getClassName());
                     }
                 }
             }
@@ -254,7 +278,7 @@ public class Parasitics {
         }
 
         private void onHandleLaunchActivity(Message msg) {
-            XposedBridge.log("GalQQ.ProxyHandlerCallback: onHandleLaunchActivity called");
+            debugLog("GalQQ.ProxyHandlerCallback: onHandleLaunchActivity called");
             try {
                 Object activityClientRecord = msg.obj;
                 Field field_intent = activityClientRecord.getClass().getDeclaredField("intent");
@@ -269,7 +293,7 @@ public class Parasitics {
                         fExtras.setAccessible(true);
                         bundle = (Bundle) fExtras.get(cloneIntent);
                     } catch (Exception e) {
-                        XposedBridge.log(e);
+                        errorLog(e);
                     }
                     
                     if (bundle != null) {
@@ -283,7 +307,7 @@ public class Parasitics {
                     }
                 }
             } catch (Exception e) {
-                XposedBridge.log(e);
+                errorLog(e);
             }
         }
 
@@ -305,7 +329,7 @@ public class Parasitics {
                 }
             } catch (Exception e) {
                 // Only log errors, not normal operations
-                XposedBridge.log("GalQQ.ProxyHandlerCallback: Error in EXECUTE_TRANSACTION: " + e.getMessage());
+                errorLog("GalQQ.ProxyHandlerCallback: Error in EXECUTE_TRANSACTION: " + e.getMessage());
             }
         }
 
@@ -338,7 +362,7 @@ public class Parasitics {
                 }
             } catch (Exception e) {
                 // Only log errors
-                XposedBridge.log("GalQQ.ProxyHandlerCallback: Error in processLaunchActivityItem: " + e.getMessage());
+                errorLog("GalQQ.ProxyHandlerCallback: Error in processLaunchActivityItem: " + e.getMessage());
             }
         }
     }

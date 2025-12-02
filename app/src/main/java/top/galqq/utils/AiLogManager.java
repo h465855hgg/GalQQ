@@ -77,12 +77,27 @@ public class AiLogManager {
      */
     public static void logAiSuccess(Context context, String provider, String model, 
                                      String userMessage, int optionsCount) {
+        logAiSuccess(context, provider, model, userMessage, optionsCount, null);
+    }
+    
+    /**
+     * 添加AI请求成功日志（带完整响应）
+     */
+    public static void logAiSuccess(Context context, String provider, String model, 
+                                     String userMessage, int optionsCount, String fullResponse) {
         StringBuilder sb = new StringBuilder();
         sb.append("AI请求成功\n");
         sb.append("Provider: ").append(provider).append("\n");
         sb.append("Model: ").append(model).append("\n");
         sb.append("Message: ").append(userMessage.substring(0, Math.min(50, userMessage.length()))).append("...\n");
         sb.append("生成选项数: ").append(optionsCount);
+        
+        // 如果启用了详细日志且有完整响应，则记录
+        if (fullResponse != null && !fullResponse.isEmpty()) {
+            sb.append("\n\n=== AI完整响应 ===\n");
+            sb.append(fullResponse);
+            sb.append("\n=== 响应结束 ===");
+        }
         
         addLog(context, sb.toString());
     }

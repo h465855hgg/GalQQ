@@ -14,8 +14,8 @@ android {
         applicationId = "com.yinghuo.galqq"
         minSdk = 24
         targetSdk = 36
-        versionCode = 102
-        versionName = "1.0.2"
+        versionCode = 104
+        versionName = "1.0.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

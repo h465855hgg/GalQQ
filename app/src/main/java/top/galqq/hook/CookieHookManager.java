@@ -17,6 +17,27 @@ public class CookieHookManager {
     
     private static final String TAG = "GalQQ.CookieHookManager";
     
+    /**
+     * 调试日志输出（受配置开关控制）
+     */
+    private static void debugLog(String message) {
+        try {
+            if (top.galqq.config.ConfigManager.isVerboseLogEnabled()) {
+                XposedBridge.log(message);
+            }
+        } catch (Throwable ignored) {
+            // ConfigManager 未初始化时忽略
+        }
+    }
+    
+    /**
+     * 初始化阶段的日志（受配置开关控制）
+     * 注意：在ConfigManager初始化之前调用时会静默忽略
+     */
+    private static void log(String message) {
+        debugLog(message);
+    }
+    
     // 内存缓存
     private static volatile String sCachedSkey = null;
     private static volatile String sCachedPSkey = null;
@@ -43,7 +64,7 @@ public class CookieHookManager {
             return;
         }
         
-        XposedBridge.log(TAG + ": ========== 初始化Cookie Hook ==========");
+        log(TAG + ": ========== 初始化Cookie Hook ==========");
         
         ClassLoader classLoader = lpparam.classLoader;
         
@@ -66,8 +87,8 @@ public class CookieHookManager {
         if (hookWtloginHelperNative(classLoader)) successCount++;
         
         sHooksInitialized = true;
-        XposedBridge.log(TAG + ": Cookie Hook初始化完成, 成功: " + successCount + "/5");
-        XposedBridge.log(TAG + ": ==========================================");
+        log(TAG + ": Cookie Hook初始化完成, 成功: " + successCount + "/5");
+        log(TAG + ": ==========================================");
     }
     
     /**
@@ -102,13 +123,13 @@ public class CookieHookManager {
                                     if (!sSkeyLogged || isNew) {
                                         sSkeyLogged = true;
                                         String preview = skey.length() > 10 ? skey.substring(0, 10) + "..." : skey;
-                                        XposedBridge.log(TAG + ": ✓ [回调] 捕获skey: " + preview);
+                                        debugLog(TAG + ": ✓ [回调] 捕获skey: " + preview);
                                     }
                                 }
                             }
                         }
                     });
-                    XposedBridge.log(TAG + ": [WtloginCallback] onSKeyGet Hook成功: " + listenerClass);
+                    debugLog(TAG + ": [WtloginCallback] onSKeyGet Hook成功: " + listenerClass);
                     success = true;
                 } catch (Throwable t) {
                     // 继续
@@ -141,13 +162,13 @@ public class CookieHookManager {
                                     if (!sPskeyLogged || isNew) {
                                         sPskeyLogged = true;
                                         String preview = pskey.length() > 10 ? pskey.substring(0, 10) + "..." : pskey;
-                                        XposedBridge.log(TAG + ": ✓ [回调] 捕获p_skey: " + preview);
+                                        debugLog(TAG + ": ✓ [回调] 捕获p_skey: " + preview);
                                     }
                                 }
                             }
                         }
                     });
-                    XposedBridge.log(TAG + ": [WtloginCallback] onPsKeyGet Hook成功: " + listenerClass);
+                    debugLog(TAG + ": [WtloginCallback] onPsKeyGet Hook成功: " + listenerClass);
                     success = true;
                 } catch (Throwable t) {
                     // 继续
@@ -160,7 +181,7 @@ public class CookieHookManager {
         }
         
         if (!success) {
-            XposedBridge.log(TAG + ": [WtloginCallback] Hook失败");
+            debugLog(TAG + ": [WtloginCallback] Hook失败");
         }
         return success;
     }
@@ -197,13 +218,13 @@ public class CookieHookManager {
                                     if (!sSkeyLogged || isNew) {
                                         sSkeyLogged = true;
                                         String preview = skey.length() > 10 ? skey.substring(0, 10) + "..." : skey;
-                                        XposedBridge.log(TAG + ": ✓ [WtloginHelper] 捕获skey: " + preview);
+                                        debugLog(TAG + ": ✓ [WtloginHelper] 捕获skey: " + preview);
                                     }
                                 }
                             }
                         }
                     });
-                    XposedBridge.log(TAG + ": [WtloginHelper] getSKey Hook成功: " + helperClass);
+                    debugLog(TAG + ": [WtloginHelper] getSKey Hook成功: " + helperClass);
                     success = true;
                 } catch (Throwable t) {
                     // 继续
@@ -237,14 +258,14 @@ public class CookieHookManager {
                                         if (!sPskeyLogged || isNew) {
                                             sPskeyLogged = true;
                                             String preview = pskey.length() > 10 ? pskey.substring(0, 10) + "..." : pskey;
-                                            XposedBridge.log(TAG + ": ✓ [WtloginHelper] 捕获p_skey: " + preview);
+                                            debugLog(TAG + ": ✓ [WtloginHelper] 捕获p_skey: " + preview);
                                         }
                                     }
                                 }
                             }
                         }
                     });
-                    XposedBridge.log(TAG + ": [WtloginHelper] getPsKey Hook成功: " + helperClass);
+                    debugLog(TAG + ": [WtloginHelper] getPsKey Hook成功: " + helperClass);
                     success = true;
                 } catch (Throwable t) {
                     // 继续
@@ -257,7 +278,7 @@ public class CookieHookManager {
         }
         
         if (!success) {
-            XposedBridge.log(TAG + ": [WtloginHelper] Hook失败");
+            debugLog(TAG + ": [WtloginHelper] Hook失败");
         }
         return success;
     }
@@ -283,7 +304,7 @@ public class CookieHookManager {
                 
                 // 尝试Hook getSkey方法
                 if (tryHookGetSkey(ticketManagerClass)) {
-                    XposedBridge.log(TAG + ": [getSkey] Hook成功: " + className);
+                    debugLog(TAG + ": [getSkey] Hook成功: " + className);
                     return true;
                 }
             } catch (Throwable t) {
@@ -296,7 +317,7 @@ public class CookieHookManager {
             return true;
         }
         
-        XposedBridge.log(TAG + ": [getSkey] Hook失败");
+        debugLog(TAG + ": [getSkey] Hook失败");
         return false;
     }
     
@@ -319,7 +340,7 @@ public class CookieHookManager {
                                 if (!sSkeyLogged || isNew) {
                                     sSkeyLogged = true;
                                     String preview = skey.length() > 10 ? skey.substring(0, 10) + "..." : skey;
-                                    XposedBridge.log(TAG + ": ✓ 捕获skey: " + preview);
+                                    debugLog(TAG + ": ✓ 捕获skey: " + preview);
                                 }
                             }
                         }
@@ -350,7 +371,7 @@ public class CookieHookManager {
                             if (ticketManager != null) {
                                 // 缓存TicketManager实例
                                 sCachedTicketManager = ticketManager;
-                                XposedBridge.log(TAG + ": [getManager] 缓存TicketManager实例: " + ticketManager.getClass().getName());
+                                debugLog(TAG + ": [getManager] 缓存TicketManager实例: " + ticketManager.getClass().getName());
                                 
                                 Class<?> tmClass = ticketManager.getClass();
                                 // 动态Hook这个类的getSkey方法
@@ -360,7 +381,7 @@ public class CookieHookManager {
                     }
                 });
             
-            XposedBridge.log(TAG + ": [getSkey] 通过getManager(2)动态Hook");
+            debugLog(TAG + ": [getSkey] 通过getManager(2)动态Hook");
             return true;
         } catch (Throwable t) {
             return false;
@@ -388,11 +409,11 @@ public class CookieHookManager {
      */
     public static boolean fetchSkeyAndPskeyFromTicketManager(String uin) {
         if (sCachedTicketManager == null || uin == null || uin.isEmpty()) {
-            XposedBridge.log(TAG + ": [主动获取] TicketManager未缓存或UIN为空");
+            debugLog(TAG + ": [主动获取] TicketManager未缓存或UIN为空");
             return false;
         }
         
-        XposedBridge.log(TAG + ": [主动获取] 尝试从TicketManager获取skey/pskey, uin=" + uin);
+        debugLog(TAG + ": [主动获取] 尝试从TicketManager获取skey/pskey, uin=" + uin);
         
         boolean success = false;
         
@@ -403,13 +424,13 @@ public class CookieHookManager {
                 sCachedSkey = (String) skey;
                 sLastUpdateTime = System.currentTimeMillis();
                 String preview = ((String) skey).length() > 10 ? ((String) skey).substring(0, 10) + "..." : (String) skey;
-                XposedBridge.log(TAG + ": [主动获取] ✓ skey: " + preview);
+                debugLog(TAG + ": [主动获取] ✓ skey: " + preview);
                 success = true;
             } else {
-                XposedBridge.log(TAG + ": [主动获取] ✗ skey为空");
+                debugLog(TAG + ": [主动获取] ✗ skey为空");
             }
         } catch (Throwable t) {
-            XposedBridge.log(TAG + ": [主动获取] getSkey失败: " + t.getMessage());
+            debugLog(TAG + ": [主动获取] getSkey失败: " + t.getMessage());
         }
         
         // 获取pskey
@@ -419,13 +440,13 @@ public class CookieHookManager {
                 sCachedPSkey = (String) pskey;
                 sLastUpdateTime = System.currentTimeMillis();
                 String preview = ((String) pskey).length() > 10 ? ((String) pskey).substring(0, 10) + "..." : (String) pskey;
-                XposedBridge.log(TAG + ": [主动获取] ✓ p_skey: " + preview);
+                debugLog(TAG + ": [主动获取] ✓ p_skey: " + preview);
                 success = true;
             } else {
-                XposedBridge.log(TAG + ": [主动获取] ✗ p_skey为空");
+                debugLog(TAG + ": [主动获取] ✗ p_skey为空");
             }
         } catch (Throwable t) {
-            XposedBridge.log(TAG + ": [主动获取] getPskey失败: " + t.getMessage());
+            debugLog(TAG + ": [主动获取] getPskey失败: " + t.getMessage());
         }
         
         return success;
@@ -439,7 +460,7 @@ public class CookieHookManager {
         sTicketManagerHooked = true;
         sCachedTicketManagerClass = tmClass;
         
-        XposedBridge.log(TAG + ": 发现TicketManager类: " + tmClass.getName());
+        debugLog(TAG + ": 发现TicketManager类: " + tmClass.getName());
         
         // Hook getSkey
         try {
@@ -457,15 +478,15 @@ public class CookieHookManager {
                                 if (!sSkeyLogged || isNew) {
                                     sSkeyLogged = true;
                                     String preview = skey.length() > 10 ? skey.substring(0, 10) + "..." : skey;
-                                    XposedBridge.log(TAG + ": ✓ 动态捕获skey: " + preview);
+                                    debugLog(TAG + ": ✓ 动态捕获skey: " + preview);
                                 }
                             }
                         }
                     }
                 });
-            XposedBridge.log(TAG + ": [动态] getSkey Hook成功");
+            debugLog(TAG + ": [动态] getSkey Hook成功");
         } catch (Throwable t) {
-            XposedBridge.log(TAG + ": [动态] getSkey Hook失败: " + t.getMessage());
+            debugLog(TAG + ": [动态] getSkey Hook失败: " + t.getMessage());
         }
         
         // Hook getPskey
@@ -485,15 +506,15 @@ public class CookieHookManager {
                                 if (!sPskeyLogged || isNew) {
                                     sPskeyLogged = true;
                                     String preview = pskey.length() > 10 ? pskey.substring(0, 10) + "..." : pskey;
-                                    XposedBridge.log(TAG + ": ✓ 动态捕获p_skey: " + preview);
+                                    debugLog(TAG + ": ✓ 动态捕获p_skey: " + preview);
                                 }
                             }
                         }
                     }
                 });
-            XposedBridge.log(TAG + ": [动态] getPskey Hook成功");
+            debugLog(TAG + ": [动态] getPskey Hook成功");
         } catch (Throwable t) {
-            XposedBridge.log(TAG + ": [动态] getPskey Hook失败: " + t.getMessage());
+            debugLog(TAG + ": [动态] getPskey Hook失败: " + t.getMessage());
         }
     }
     
@@ -530,21 +551,21 @@ public class CookieHookManager {
                                     if (!sPskeyLogged || isNew) {
                                         sPskeyLogged = true;
                                         String preview = pskey.length() > 10 ? pskey.substring(0, 10) + "..." : pskey;
-                                        XposedBridge.log(TAG + ": ✓ 捕获p_skey: " + preview);
+                                        debugLog(TAG + ": ✓ 捕获p_skey: " + preview);
                                     }
                                 }
                             }
                         }
                     });
                 
-                XposedBridge.log(TAG + ": [getPskey] Hook成功: " + className);
+                debugLog(TAG + ": [getPskey] Hook成功: " + className);
                 return true;
             } catch (Throwable t) {
                 // 继续尝试下一个类
             }
         }
         
-        XposedBridge.log(TAG + ": [getPskey] Hook失败");
+        debugLog(TAG + ": [getPskey] Hook失败");
         return false;
     }
     
@@ -576,21 +597,21 @@ public class CookieHookManager {
                                     // 只在首次或值变化时记录日志（避免刷屏）
                                     if (!sUinLogged || isNew) {
                                         sUinLogged = true;
-                                        XposedBridge.log(TAG + ": ✓ 捕获uin: " + uin);
+                                        debugLog(TAG + ": ✓ 捕获uin: " + uin);
                                     }
                                 }
                             }
                         }
                     });
                 
-                XposedBridge.log(TAG + ": [getUin] Hook成功: " + className);
+                debugLog(TAG + ": [getUin] Hook成功: " + className);
                 return true;
             } catch (Throwable t) {
                 // 继续尝试下一个类
             }
         }
         
-        XposedBridge.log(TAG + ": [getUin] Hook失败");
+        debugLog(TAG + ": [getUin] Hook失败");
         return false;
     }
 

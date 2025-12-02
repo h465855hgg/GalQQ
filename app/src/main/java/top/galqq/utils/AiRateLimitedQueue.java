@@ -36,6 +36,14 @@ public class AiRateLimitedQueue {
     
     private static final String TAG = "GalQQ.AiQueue";
     
+    private static void debugLog(String message) {
+        try {
+            if (ConfigManager.isVerboseLogEnabled()) {
+                XposedBridge.log(message);
+            }
+        } catch (Throwable ignored) {}
+    }
+    
     // 单例
     private static volatile AiRateLimitedQueue instance;
     
@@ -82,7 +90,7 @@ public class AiRateLimitedQueue {
         // 启动工作线程
         startWorker();
         
-        XposedBridge.log(TAG + ": 初始化完成，初始QPS=" + initialQps);
+        debugLog(TAG + ": 初始化完成，初始QPS=" + initialQps);
     }
     
     public static AiRateLimitedQueue getInstance(Context context) {
@@ -132,7 +140,7 @@ public class AiRateLimitedQueue {
                 persistence.saveQueueAsync(requestQueue);
             }
         } else {
-            XposedBridge.log(TAG + ": ⚠️ 队列已满，丢弃请求");
+            debugLog(TAG + ": ⚠️ 队列已满，丢弃请求");
             callback.onFailure(new Exception("队列已满"));
         }
     }
@@ -143,7 +151,7 @@ public class AiRateLimitedQueue {
     private void restoreRequests(Context context) {
         List<PrioritizedRequest> restored = persistence.loadQueue(context);
         if (!restored.isEmpty()) {
-            XposedBridge.log(TAG + ": 恢复了 " + restored.size() + " 个持久化请求");
+            debugLog(TAG + ": 恢复了 " + restored.size() + " 个持久化请求");
             for (PrioritizedRequest req : restored) {
                 requestQueue.offer(req);
             }
@@ -155,7 +163,7 @@ public class AiRateLimitedQueue {
      */
     private void startWorker() {
         workerThread = new Thread(() -> {
-            XposedBridge.log(TAG + ": 工作线程启动");
+            debugLog(TAG + ": 工作线程启动");
             
             while (!Thread.currentThread().isInterrupted()) {
                 try {
@@ -179,14 +187,14 @@ public class AiRateLimitedQueue {
                                 persistence.saveQueueAsync(requestQueue);
                             }
                         } catch (Throwable t) {
-                            XposedBridge.log(TAG + ": 异步任务执行异常: " + t.getMessage());
+                            debugLog(TAG + ": 异步任务执行异常: " + t.getMessage());
                         } finally {
                             activeRequests.remove(reqInfo);
                         }
                     });
                     
                 } catch (InterruptedException e) {
-                    XposedBridge.log(TAG + ": 工作线程被中断");
+                    debugLog(TAG + ": 工作线程被中断");
                     Thread.currentThread().interrupt();
                     break;
                 } catch (Throwable t) {
@@ -299,9 +307,10 @@ public class AiRateLimitedQueue {
         
         synchronized (lock) {
             // 异步调用转同步（带上下文和自定义提示词）
+            // 使用静默版本，不显示Toast（由队列统一管理重试和错误提示）
             if (request.customSystemPrompt != null && !request.customSystemPrompt.isEmpty()) {
-                // 使用自定义提示词
-                HttpAiClient.fetchOptionsWithPrompt(request.context, request.msgContent,
+                // 使用自定义提示词（静默模式）
+                HttpAiClient.fetchOptionsWithPromptSilent(request.context, request.msgContent,
                                          request.currentSenderName, request.currentTimestamp,
                                          request.contextMessages, request.customSystemPrompt,
                                          new HttpAiClient.AiCallback() {
@@ -322,8 +331,8 @@ public class AiRateLimitedQueue {
                     }
                 });
             } else {
-                // 使用默认提示词
-                HttpAiClient.fetchOptions(request.context, request.msgContent,
+                // 使用默认提示词（静默模式）
+                HttpAiClient.fetchOptionsSilent(request.context, request.msgContent,
                                          request.currentSenderName, request.currentTimestamp,
                                          request.contextMessages, new HttpAiClient.AiCallback() {
                     @Override

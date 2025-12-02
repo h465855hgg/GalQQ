@@ -13,30 +13,25 @@
         android:textStyle="bold"
         android:paddingBottom="16dp"/>
 
-
-    <FrameLayout
+    <ScrollView
+        android:id="@+id/log_scroll_view"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1">
+        android:layout_weight="1"
+        android:background="#F5F5F5"
+        android:padding="12dp"
+        android:fillViewport="true">
 
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/log_recycler_view"
+        <TextView
+            android:id="@+id/log_text_view"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="#F5F5F5"
-            android:padding="12dp"
-            android:clipToPadding="false"/>
-
-        <View
-            android:id="@+id/fast_scroller"
-            android:layout_width="12dp"
-            android:layout_height="48dp"
-            android:layout_gravity="end|center_vertical"
-            android:layout_marginEnd="4dp"
-            android:background="@drawable/fast_scroll_thumb"
-            android:visibility="visible"/>
-    </FrameLayout>
-
+            android:layout_height="wrap_content"
+            android:textColor="#333333"
+            android:textSize="12sp"
+            android:fontFamily="monospace"
+            android:textIsSelectable="true"
+            android:lineSpacingExtra="4dp"/>
+    </ScrollView>
 
     <LinearLayout
         android:layout_width="match_parent"

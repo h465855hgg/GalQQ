@@ -24,6 +24,30 @@ import top.galqq.R;
 public class SettingsInterceptor {
 
     private static final String TAG = "GalQQ.SettingsInterceptor";
+    
+    /**
+     * 调试日志输出（受配置开关控制）
+     */
+    private static void debugLog(String message) {
+        try {
+            if (top.galqq.config.ConfigManager.isVerboseLogEnabled()) {
+                XposedBridge.log(message);
+            }
+        } catch (Throwable ignored) {
+            // ConfigManager 未初始化时忽略
+        }
+    }
+    
+    /**
+     * 错误日志（始终输出）
+     */
+    private static void errorLog(String message) {
+        XposedBridge.log(message);
+    }
+    
+    private static void errorLog(Throwable t) {
+        XposedBridge.log(t);
+    }
 
     public static void init(ClassLoader classLoader) {
         try {
@@ -34,8 +58,8 @@ public class SettingsInterceptor {
             }
             
         } catch (Throwable t) {
-            XposedBridge.log(TAG + ": Failed to initialize: " + t.getMessage());
-            XposedBridge.log(t);
+            errorLog(TAG + ": Failed to initialize: " + t.getMessage());
+            errorLog(t);
         }
     }
 
@@ -66,12 +90,12 @@ public class SettingsInterceptor {
                 classLoader
             );
             
-            XposedBridge.log(TAG + ": MainSettingConfigProvider found: " + (kMainSettingConfigProvider != null));
-            XposedBridge.log(TAG + ": NewSettingConfigProvider found: " + (kNewSettingConfigProvider != null));
-            XposedBridge.log(TAG + ": NewSettingConfigProviderObf found: " + (kNewSettingConfigProviderObf != null));
+            debugLog(TAG + ": MainSettingConfigProvider found: " + (kMainSettingConfigProvider != null));
+            debugLog(TAG + ": NewSettingConfigProvider found: " + (kNewSettingConfigProvider != null));
+            debugLog(TAG + ": NewSettingConfigProviderObf found: " + (kNewSettingConfigProviderObf != null));
             
             if (kMainSettingConfigProvider == null && kNewSettingConfigProvider == null && kNewSettingConfigProviderObf == null) {
-                XposedBridge.log(TAG + ": No ConfigProvider found");
+                debugLog(TAG + ": No ConfigProvider found");
                 return false;
             }
             
@@ -79,7 +103,7 @@ public class SettingsInterceptor {
             if (kMainSettingConfigProvider != null) {
                 getItemProcessListOld = findGetItemProcessListMethod(kMainSettingConfigProvider);
                 if (getItemProcessListOld != null) {
-                    XposedBridge.log(TAG + ": Found method in MainSettingConfigProvider: " + getItemProcessListOld.getName());
+                    debugLog(TAG + ": Found method in MainSettingConfigProvider: " + getItemProcessListOld.getName());
                 }
             }
             
@@ -87,7 +111,7 @@ public class SettingsInterceptor {
             if (kNewSettingConfigProvider != null) {
                 getItemProcessListNew = findGetItemProcessListMethod(kNewSettingConfigProvider);
                 if (getItemProcessListNew != null) {
-                    XposedBridge.log(TAG + ": Found method in NewSettingConfigProvider: " + getItemProcessListNew.getName());
+                    debugLog(TAG + ": Found method in NewSettingConfigProvider: " + getItemProcessListNew.getName());
                 }
             }
             
@@ -95,31 +119,31 @@ public class SettingsInterceptor {
             if (kNewSettingConfigProviderObf != null) {
                 getItemProcessListNewObf = findGetItemProcessListMethod(kNewSettingConfigProviderObf);
                 if (getItemProcessListNewObf != null) {
-                    XposedBridge.log(TAG + ": Found method in NewSettingConfigProviderObf: " + getItemProcessListNewObf.getName());
+                    debugLog(TAG + ": Found method in NewSettingConfigProviderObf: " + getItemProcessListNewObf.getName());
                 }
             }
             
             if (getItemProcessListOld == null && getItemProcessListNew == null && getItemProcessListNewObf == null) {
-                XposedBridge.log(TAG + ": getItemProcessList method not found in any ConfigProvider");
+                debugLog(TAG + ": getItemProcessList method not found in any ConfigProvider");
                 return false;
             }
             
             Class<?> kAbstractItemProcessor = findAbstractItemProcessor(classLoader);
             if (kAbstractItemProcessor == null) {
-                XposedBridge.log(TAG + ": AbstractItemProcessor not found");
+                debugLog(TAG + ": AbstractItemProcessor not found");
                 return false;
             }
             
             Class<?> kSimpleItemProcessor = findSimpleItemProcessor(classLoader, kAbstractItemProcessor);
             if (kSimpleItemProcessor == null) {
-                XposedBridge.log(TAG + ": SimpleItemProcessor not found");
+                debugLog(TAG + ": SimpleItemProcessor not found");
                 return false;
             }
             
             // 查找 setOnClickListener 方法
             final Method setOnClickListenerMethod = findSetOnClickListenerMethod(kSimpleItemProcessor);
             if (setOnClickListenerMethod == null) {
-                XposedBridge.log(TAG + ": setOnClickListener method not found");
+                debugLog(TAG + ": setOnClickListener method not found");
                 return false;
             }
             
@@ -141,36 +165,36 @@ public class SettingsInterceptor {
                 ctorArgc = 4;
             }
             
-            XposedBridge.log(TAG + ": Preparing to hook getItemProcessList methods...");
+            debugLog(TAG + ": Preparing to hook getItemProcessList methods...");
             
             // 创建共享的 Hook 回调
             XC_MethodHook callback = new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                     try {
-                        XposedBridge.log(TAG + ": === getItemProcessList callback triggered ===");
+                        debugLog(TAG + ": === getItemProcessList callback triggered ===");
                         
                         List<Object> result = (List<Object>) param.getResult();
                         Context ctx = (Context) param.args[0];
                         
-                        XposedBridge.log(TAG + ": Result list size: " + result.size());
+                        debugLog(TAG + ": Result list size: " + result.size());
                         
                         Class<?> kItemProcessorGroup = result.get(0).getClass();
-                        XposedBridge.log(TAG + ": ItemProcessorGroup class: " + kItemProcessorGroup.getName());
+                        debugLog(TAG + ": ItemProcessorGroup class: " + kItemProcessorGroup.getName());
                         
                         // 创建设置项
                         ctorSimpleItemProcessor.setAccessible(true);
                         Object entryItem;
                         if (ctorArgc == 5) {
-                            XposedBridge.log(TAG + ": Creating entryItem with 5-arg constructor");
+                            debugLog(TAG + ": Creating entryItem with 5-arg constructor");
                             entryItem = ctorSimpleItemProcessor.newInstance(
                                 ctx, R.id.setting2Activity_settingEntryItem, "GalQQ", 0, null);
                         } else {
-                            XposedBridge.log(TAG + ": Creating entryItem with 4-arg constructor");
+                            debugLog(TAG + ": Creating entryItem with 4-arg constructor");
                             entryItem = ctorSimpleItemProcessor.newInstance(
                                 ctx, R.id.setting2Activity_settingEntryItem, "GalQQ", 0);
                         }
-                        XposedBridge.log(TAG + ": Entry item created: " + entryItem);
+                        debugLog(TAG + ": Entry item created: " + entryItem);
                         
                         // 设置点击监听器
                         Class<?> function0Class = setOnClickListenerMethod.getParameterTypes()[0];
@@ -184,7 +208,7 @@ public class SettingsInterceptor {
                             new Class<?>[]{function0Class},
                             (proxy, method, args) -> {
                                 if ("invoke".equals(method.getName())) {
-                                    XposedBridge.log(TAG + ": *** Setting item clicked! ***");
+                                    debugLog(TAG + ": *** Setting item clicked! ***");
                                     onSettingEntryClick(ctx);
                                     return unitInstance;
                                 }
@@ -198,7 +222,7 @@ public class SettingsInterceptor {
                         setOnClickListenerMethod.setAccessible(true);
                         setOnClickListenerMethod.invoke(entryItem, clickListener);
                         
-                        XposedBridge.log(TAG + ": Click listener set");
+                        debugLog(TAG + ": Click listener set");
                         
                         // 创建设置组
                         ArrayList<Object> list = new ArrayList<>();
@@ -221,17 +245,17 @@ public class SettingsInterceptor {
                         }
                         
                         // 插入到列表
-                        XposedBridge.log(TAG + ": Adding group to result list at index 1");
-                        XposedBridge.log(TAG + ": Group object: " + group);
-                        XposedBridge.log(TAG + ": List size before add: " + result.size());
+                        debugLog(TAG + ": Adding group to result list at index 1");
+                        debugLog(TAG + ": Group object: " + group);
+                        debugLog(TAG + ": List size before add: " + result.size());
                         
                         result.add(1, group);
                         
-                        XposedBridge.log(TAG + ": List size after add: " + result.size());
-                        XposedBridge.log(TAG + ": ✓ Successfully injected setting entry!");
+                        debugLog(TAG + ": List size after add: " + result.size());
+                        debugLog(TAG + ": ✓ Successfully injected setting entry!");
                     } catch (Throwable t) {
-                        XposedBridge.log(TAG + ": Error in hook callback: " + t.getMessage());
-                        XposedBridge.log(t);
+                        errorLog(TAG + ": Error in hook callback: " + t.getMessage());
+                        errorLog(t);
                     }
                 }
             };
@@ -240,26 +264,26 @@ public class SettingsInterceptor {
             int hookedCount = 0;
             if (getItemProcessListOld != null) {
                 XposedBridge.hookMethod(getItemProcessListOld, callback);
-                XposedBridge.log(TAG + ": Hooked MainSettingConfigProvider." + getItemProcessListOld.getName());
+                debugLog(TAG + ": Hooked MainSettingConfigProvider." + getItemProcessListOld.getName());
                 hookedCount++;
             }
             if (getItemProcessListNew != null) {
                 XposedBridge.hookMethod(getItemProcessListNew, callback);
-                XposedBridge.log(TAG + ": Hooked NewSettingConfigProvider." + getItemProcessListNew.getName());
+                debugLog(TAG + ": Hooked NewSettingConfigProvider." + getItemProcessListNew.getName());
                 hookedCount++;
             }
             if (getItemProcessListNewObf != null) {
                 XposedBridge.hookMethod(getItemProcessListNewObf, callback);
-                XposedBridge.log(TAG + ": Hooked NewSettingConfigProviderObf." + getItemProcessListNewObf.getName());
+                debugLog(TAG + ": Hooked NewSettingConfigProviderObf." + getItemProcessListNewObf.getName());
                 hookedCount++;
             }
             
-            XposedBridge.log(TAG + ": ✓✓✓ Successfully hooked " + hookedCount + " ConfigProvider(s) ✓✓✓");
+            debugLog(TAG + ": ✓✓✓ Successfully hooked " + hookedCount + " ConfigProvider(s) ✓✓✓");
             return true;
             
         } catch (Throwable t) {
-            XposedBridge.log(TAG + ": Failed to hook new version: " + t.getMessage());
-            XposedBridge.log(t);
+            errorLog(TAG + ": Failed to hook new version: " + t.getMessage());
+            errorLog(t);
             return false;
         }
     }
@@ -330,15 +354,15 @@ public class SettingsInterceptor {
 
     private static void onSettingEntryClick(Context ctx) {
         try {
-            XposedBridge.log(TAG + ": Opening settings activity...");
+            debugLog(TAG + ": Opening settings activity...");
             Intent intent = new Intent();
             intent.setClassName(ctx, "top.galqq.ui.SettingsUiFragmentHostActivity");
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             ctx.startActivity(intent);
-            XposedBridge.log(TAG + ": Settings activity started successfully");
+            debugLog(TAG + ": Settings activity started successfully");
         } catch (Exception e) {
-            XposedBridge.log(TAG + ": Failed to start activity: " + e.getMessage());
-            XposedBridge.log(e);
+            errorLog(TAG + ": Failed to start activity: " + e.getMessage());
+            errorLog(e);
         }
     }
 
@@ -357,11 +381,11 @@ public class SettingsInterceptor {
                             injectSettingEntryOldVersion((Activity) param.thisObject);
                         }
                     });
-                XposedBridge.log(TAG + ": Successfully hooked QQSettingSettingActivity");
+                debugLog(TAG + ": Successfully hooked QQSettingSettingActivity");
             }
             
         } catch (Throwable t) {
-            XposedBridge.log(TAG + ": Failed to hook old version: " + t.getMessage());
+            errorLog(TAG + ": Failed to hook old version: " + t.getMessage());
         }
     }
 
@@ -396,7 +420,7 @@ public class SettingsInterceptor {
                     intent.setClassName(activity, "top.galqq.ui.SettingsUiFragmentHostActivity");
                     activity.startActivity(intent);
                 } catch (Exception e) {
-                    XposedBridge.log(TAG + ": Failed to start activity: " + e.getMessage());
+                    errorLog(TAG + ": Failed to start activity: " + e.getMessage());
                 }
             });
             
@@ -414,11 +438,11 @@ public class SettingsInterceptor {
                 );
                 
                 list.addView(item, 0, lp);
-                XposedBridge.log(TAG + ": Successfully injected (old version)");
+                debugLog(TAG + ": Successfully injected (old version)");
             }
             
         } catch (Throwable t) {
-            XposedBridge.log(TAG + ": Failed to inject (old version): " + t.getMessage());
+            errorLog(TAG + ": Failed to inject (old version): " + t.getMessage());
         }
     }
 

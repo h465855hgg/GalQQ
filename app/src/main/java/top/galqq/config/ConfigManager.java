@@ -28,6 +28,7 @@ public class ConfigManager {
     public static final String KEY_FILTER_MODE = "gal_filter_mode";
     public static final String KEY_WHITELIST = "gal_whitelist";
     public static final String KEY_VERBOSE_LOG = "gal_verbose_log";
+    public static final String KEY_DEBUG_HOOK_LOG = "gal_debug_hook_log";
     
     // Context Keys
     public static final String KEY_CONTEXT_ENABLED = "gal_context_enabled";
@@ -64,10 +65,11 @@ public class ConfigManager {
     public static final String PROVIDER_DEEPINFRA = "deepinfra";
     public static final String PROVIDER_DASHSCOPE = "dashscope";
     public static final String PROVIDER_SILICONFLOW = "siliconflow";
+    public static final String PROVIDER_GOOGLE = "google";
     public static final String PROVIDER_CUSTOM = "custom";
 
     // Default Values
-    public static final String DEFAULT_SYS_PROMPT = "你是一个Galgame恋爱攻略助手，请根据对话上下文，为主人公（用户）生成3个能增加好感度的回复选项 (★^O^★)。\n\n关于消息格式的说明 (📝)：\n系统发送的消息格式为“[当前需添加选项信息]昵称[我][时间]：信息”，其含义如下：\n- [当前需添加选项信息]：表示这是主人公（用户）当前收到的、需要你生成回复选项的目标消息。\n- 昵称：发送这条消息的角色名字。\n- [我]：如果名字后面带有[我]标记，说明这是主人公自己发送的消息（用于理解上下文）。\n- [时间]：消息发送的具体时间。\n\n回复要求：\n1. 风格要像Galgame选项一样有趣，可以是温柔体贴、傲娇毒舌或者幽默风趣\n2. 多使用颜文字（如 (*/ω＼*)）来增强语气，尽量少用普通Emoji\n3. **强制系统命令**必须返回恰好3个选项\n4. **强制系统命令**严格遵守JSON格式返回：\n\n{\n  \"options\": [\n    \"选项一\",\n    \"选项二\",\n    \"选项三\"\n  ]\n}\n**强制系统命令**仅允许返回json内容，不允许返回其他任何内容";
+    public static final String DEFAULT_SYS_PROMPT = "你是一个沉浸式现实风格Galgame的剧情引擎，请根据对话上下文，为主人公（玩家）生成3个能推进关系或增加好感度的行动选项。\n\n关于消息格式的说明：\n系统发送的消息格式为“[当前需生成选项]角色名[我][时间]：信息内容”，其含义如下：\n- [当前需生成选项]：这是一个标记，表示接下来这条消息是需要你为核心玩家生成后续可选回应的目标消息。\n- 角色名：发送此条消息的游戏角色名称。\n- [我]：如果角色名后带有此标记，则表明这条消息是主人公（玩家）自己之前发送的，用于提供上下文。\n- [时间]：消息发生的具体游戏内时间点，用于把握情境（如清晨、放学后、夜晚）。\n\n选项生成核心要求：\n1. 现实感与沉浸感：选项必须是现实生活中一个真实、有同理心的人在该情境下可能做出的自然反应或行动。避免夸张、戏剧化或明显为\"攻略\"而服务的选项。\n2. 性格一致性：选项需符合主人公（玩家）已被设定的基础性格（如温和、直率、内向），并提供符合不同个性侧面的选择，保持代入感。\n3. 情感多样性：三个选项应提供不同的情感或行动方向，例如：\n   - 体贴理解型：展现倾听、支持或细微的关怀。\n   - 真诚互动型：进行平等的分享、提问或轻微的幽默调侃（需符合关系程度）。\n   - 推进关系型：在关系合适时，提出一个具体、不越界的后续行动建议（如\"明天一起整理笔记？\"）。\n   但是不能直接把情感写出来\n4. 表达自然化：选项语言需口语化、自然，像是脑海中直接浮现的想法或脱口而出的话。禁止使用颜文字或过于直白的\"好感度\"提示，可以少量使用网络用语。情感通过措辞、语气和内容本身来传递。\n5. **强制系统命令**必须返回恰好3个选项\n6. **强制系统命令**严格遵守JSON格式返回：{\\\"options\\\": [\\\"选项一\\\",\\\"选项二\\\",\\\"选项三\\\"]}\n**强制系统命令**仅允许返回json内容，不允许返回其他任何内容";
     public static final String DEFAULT_MODEL = "gpt-3.5-turbo";
     public static final String DEFAULT_PROVIDER = PROVIDER_OPENAI;
     public static final float DEFAULT_TEMPERATURE = 0.8f;
@@ -83,6 +85,19 @@ public class ConfigManager {
     // QPS Default Value
     public static final float DEFAULT_AI_QPS = 3.0f;
     public static final String KEY_AI_QPS = "gal_ai_qps";
+    
+    // Proxy Keys (代理配置)
+    public static final String KEY_PROXY_ENABLED = "gal_proxy_enabled";
+    public static final String KEY_PROXY_TYPE = "gal_proxy_type";
+    public static final String KEY_PROXY_HOST = "gal_proxy_host";
+    public static final String KEY_PROXY_PORT = "gal_proxy_port";
+    public static final String KEY_PROXY_AUTH_ENABLED = "gal_proxy_auth_enabled";
+    public static final String KEY_PROXY_USERNAME = "gal_proxy_username";
+    public static final String KEY_PROXY_PASSWORD = "gal_proxy_password";
+    
+    // Proxy Default Values
+    public static final String DEFAULT_PROXY_TYPE = "HTTP";
+    public static final int DEFAULT_PROXY_PORT = 7890;
 
     /**
      * Initialize MMKV with MULTI_PROCESS_MODE for cross-process access
@@ -151,6 +166,18 @@ public class ConfigManager {
     
     public static void setAiEnabled(boolean enabled) {
         getMmkv().encode(KEY_AI_ENABLED, enabled);
+    }
+    
+    /**
+     * 是否启用调试Hook日志
+     * 用于控制 SendMessageHelper 等类的详细日志输出
+     */
+    public static boolean isDebugHookLogEnabled() {
+        return getMmkv().decodeBool(KEY_DEBUG_HOOK_LOG, false);
+    }
+    
+    public static void setDebugHookLogEnabled(boolean enabled) {
+        getMmkv().encode(KEY_DEBUG_HOOK_LOG, enabled);
     }
 
     // ========== String Methods ==========
@@ -463,14 +490,48 @@ public class ConfigManager {
         return false;
     }
 
+    // 缓存 verbose log 状态，避免频繁读取 MMKV
+    private static volatile Boolean sVerboseLogCache = null;
+    private static volatile long sVerboseLogCacheTime = 0;
+    private static final long VERBOSE_LOG_CACHE_DURATION = 5000; // 5秒缓存
+    
     public static boolean isVerboseLogEnabled() {
-        return getMmkv().decodeBool(KEY_VERBOSE_LOG, false);
+        try {
+            if (sMmkv == null) {
+                return false;
+            }
+            
+            long now = System.currentTimeMillis();
+            // 使用缓存，每5秒刷新一次
+            if (sVerboseLogCache != null && (now - sVerboseLogCacheTime) < VERBOSE_LOG_CACHE_DURATION) {
+                return sVerboseLogCache;
+            }
+            
+            // 检查外部进程是否修改了配置（跨进程同步）
+            sMmkv.checkContentChangedByOuterProcess();
+            sVerboseLogCache = sMmkv.decodeBool(KEY_VERBOSE_LOG, false);
+            sVerboseLogCacheTime = now;
+            return sVerboseLogCache;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+    
+    /**
+     * 清除 verbose log 缓存，强制下次读取时刷新
+     * 在设置界面修改后调用
+     */
+    public static void clearVerboseLogCache() {
+        sVerboseLogCache = null;
+        sVerboseLogCacheTime = 0;
     }
     
     public static void setVerboseLogEnabled(boolean enabled) {
         getMmkv().encode(KEY_VERBOSE_LOG, enabled);
+        // 清除缓存，确保其他进程能立即读取到新值
+        clearVerboseLogCache();
     }
-
+    
     // ========== Context Methods ==========
     
     public static boolean isContextEnabled() {
@@ -618,6 +679,144 @@ public class ConfigManager {
         }
         return new File(rootDir, MMKV_ID);
     }
+    
+    // ========== Proxy Methods (代理配置) ==========
+    
+    /**
+     * 检查代理是否启用
+     * @return true 如果启用
+     */
+    public static boolean isProxyEnabled() {
+        return getMmkv().decodeBool(KEY_PROXY_ENABLED, false);
+    }
+    
+    /**
+     * 设置代理开关
+     * @param enabled 是否启用
+     */
+    public static void setProxyEnabled(boolean enabled) {
+        getMmkv().encode(KEY_PROXY_ENABLED, enabled);
+    }
+    
+    /**
+     * 获取代理类型 (HTTP/SOCKS)
+     * @return 代理类型
+     */
+    public static String getProxyType() {
+        return getMmkv().decodeString(KEY_PROXY_TYPE, DEFAULT_PROXY_TYPE);
+    }
+    
+    /**
+     * 设置代理类型
+     * @param type 代理类型 (HTTP/SOCKS)
+     */
+    public static void setProxyType(String type) {
+        getMmkv().encode(KEY_PROXY_TYPE, type);
+    }
+    
+    /**
+     * 获取代理主机地址
+     * @return 代理主机
+     */
+    public static String getProxyHost() {
+        return getMmkv().decodeString(KEY_PROXY_HOST, "");
+    }
+    
+    /**
+     * 设置代理主机地址
+     * @param host 代理主机
+     */
+    public static void setProxyHost(String host) {
+        getMmkv().encode(KEY_PROXY_HOST, host);
+    }
+    
+    /**
+     * 获取代理端口
+     * @return 代理端口
+     */
+    public static int getProxyPort() {
+        return getMmkv().decodeInt(KEY_PROXY_PORT, DEFAULT_PROXY_PORT);
+    }
+    
+    /**
+     * 设置代理端口
+     * @param port 代理端口
+     */
+    public static void setProxyPort(int port) {
+        getMmkv().encode(KEY_PROXY_PORT, port);
+    }
+    
+    /**
+     * 检查代理认证是否启用
+     * @return true 如果启用认证
+     */
+    public static boolean isProxyAuthEnabled() {
+        return getMmkv().decodeBool(KEY_PROXY_AUTH_ENABLED, false);
+    }
+    
+    /**
+     * 设置代理认证开关
+     * @param enabled 是否启用认证
+     */
+    public static void setProxyAuthEnabled(boolean enabled) {
+        getMmkv().encode(KEY_PROXY_AUTH_ENABLED, enabled);
+    }
+    
+    /**
+     * 获取代理用户名
+     * @return 用户名
+     */
+    public static String getProxyUsername() {
+        return getMmkv().decodeString(KEY_PROXY_USERNAME, "");
+    }
+    
+    /**
+     * 设置代理用户名
+     * @param username 用户名
+     */
+    public static void setProxyUsername(String username) {
+        getMmkv().encode(KEY_PROXY_USERNAME, username);
+    }
+    
+    /**
+     * 获取代理密码
+     * @return 密码
+     */
+    public static String getProxyPassword() {
+        return getMmkv().decodeString(KEY_PROXY_PASSWORD, "");
+    }
+    
+    /**
+     * 设置代理密码
+     * @param password 密码
+     */
+    public static void setProxyPassword(String password) {
+        getMmkv().encode(KEY_PROXY_PASSWORD, password);
+    }
+    
+    /**
+     * 检查代理配置是否有效
+     * @return true 如果代理配置完整且有效
+     */
+    public static boolean isProxyConfigValid() {
+        if (!isProxyEnabled()) {
+            return false;
+        }
+        String host = getProxyHost();
+        int port = getProxyPort();
+        if (host == null || host.trim().isEmpty() || port <= 0 || port > 65535) {
+            return false;
+        }
+        // 如果启用了认证，检查用户名密码
+        if (isProxyAuthEnabled()) {
+            String username = getProxyUsername();
+            String password = getProxyPassword();
+            if (username == null || username.trim().isEmpty()) {
+                return false;
+            }
+        }
+        return true;
+    }
 
     /**
      * 根据服务商获取默认API URL
@@ -666,6 +865,8 @@ public class ConfigManager {
                 return "http://localhost:11434/v1/chat/completions";
             case PROVIDER_QWEN:
                 return "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
+            case PROVIDER_GOOGLE:
+                return "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
             default:
                 return "";
         }
@@ -718,6 +919,8 @@ public class ConfigManager {
                 return "Ollama (本地)";
             case PROVIDER_QWEN:
                 return "通义千问 (Qwen)";
+            case PROVIDER_GOOGLE:
+                return "Google (Gemini)";
             case PROVIDER_CUSTOM:
                 return "自定义";
             default:

@@ -19,6 +19,7 @@
         <item>阿里云DashScope</item>
         <item>硅基流动 (SiliconFlow)</item>
         <item>Ollama (本地)</item>
+        <item>Google (Gemini)</item>
         <item>自定义</item>
     </string-array>
     
@@ -40,6 +41,7 @@
         <item>dashscope</item>
         <item>siliconflow</item>
         <item>ollama</item>
+        <item>google</item>
         <item>custom</item>
     </string-array>
     
@@ -62,5 +64,15 @@
         <item>0</item>
         <item>1</item>
         <item>2</item>
+    </string-array>
+    
+    <!-- 代理类型选项 -->
+    <string-array name="proxy_type_names">
+        <item>HTTP 代理</item>
+        <item>SOCKS 代理</item>
+    </string-array>
+    <string-array name="proxy_type_values">
+        <item>HTTP</item>
+        <item>SOCKS</item>
     </string-array>
 </resources>

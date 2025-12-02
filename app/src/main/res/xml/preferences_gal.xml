@@ -78,6 +78,12 @@
             android:summary="记录完整的API请求包（包含Headers和Body）"
             android:defaultValue="false" />
         
+        <SwitchPreference
+            android:key="gal_debug_hook_log"
+            android:title="调试Hook日志"
+            android:summary="记录消息发送、引用回复等Hook调用的详细日志（用于开发调试）"
+            android:defaultValue="false" />
+        
         
         <Preference
             android:key="gal_ai_log"
@@ -108,6 +114,66 @@
             android:summary="超过此时间（秒）的消息不触发AI（默认：600秒 = 10分钟）"
             android:inputType="number"
             android:defaultValue="600" />
+    </PreferenceCategory>
+    
+    <PreferenceCategory android:title="代理设置">
+        <SwitchPreference
+            android:key="gal_proxy_enabled"
+            android:title="启用代理"
+            android:summary="通过代理服务器访问AI接口"
+            android:defaultValue="false" />
+        
+        <ListPreference
+            android:key="gal_proxy_type"
+            android:title="代理类型"
+            android:entries="@array/proxy_type_names"
+            android:entryValues="@array/proxy_type_values"
+            android:defaultValue="HTTP"
+            android:summary="选择代理协议类型"
+            android:dependency="gal_proxy_enabled" />
+        
+        <EditTextPreference
+            android:key="gal_proxy_host"
+            android:title="代理地址"
+            android:summary="代理服务器IP（如电脑IP 192.168.x.x，手机本地用 127.0.0.1）"
+            android:defaultValue=""
+            android:dependency="gal_proxy_enabled" />
+        
+        <EditTextPreference
+            android:key="gal_proxy_port"
+            android:title="代理端口"
+            android:summary="代理服务器端口（如 7890）"
+            android:inputType="number"
+            android:defaultValue="7890"
+            android:dependency="gal_proxy_enabled" />
+        
+        <SwitchPreference
+            android:key="gal_proxy_auth_enabled"
+            android:title="启用代理认证"
+            android:summary="代理服务器需要用户名密码"
+            android:defaultValue="false"
+            android:dependency="gal_proxy_enabled" />
+        
+        <EditTextPreference
+            android:key="gal_proxy_username"
+            android:title="代理用户名"
+            android:summary="代理认证用户名"
+            android:defaultValue=""
+            android:dependency="gal_proxy_auth_enabled" />
+        
+        <EditTextPreference
+            android:key="gal_proxy_password"
+            android:title="代理密码"
+            android:summary="代理认证密码"
+            android:inputType="textPassword"
+            android:defaultValue=""
+            android:dependency="gal_proxy_auth_enabled" />
+        
+        <Preference
+            android:key="gal_test_proxy"
+            android:title="测试代理连接"
+            android:summary="测试代理配置是否正常工作"
+            android:dependency="gal_proxy_enabled" />
     </PreferenceCategory>
 
     <PreferenceCategory android:title="过滤设置">
@@ -181,7 +247,7 @@
         <Preference
             android:key="gal_version"
             android:title="版本号"
-            android:summary="1.0.2 Alpha" />
+            android:summary="1.0.4 Alpha" />
             
         <Preference
             android:key="gal_developer"

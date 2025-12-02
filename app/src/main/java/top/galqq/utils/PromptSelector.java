@@ -16,6 +16,14 @@ public class PromptSelector {
     
     private static final String TAG = "GalQQ.PromptSelector";
     
+    private static void debugLog(String message) {
+        try {
+            if (top.galqq.config.ConfigManager.isVerboseLogEnabled()) {
+                de.robv.android.xposed.XposedBridge.log(message);
+            }
+        } catch (Throwable ignored) {}
+    }
+    
     /**
      * 计算单个提示词对指定QQ的状态
      * @param prompt 提示词
@@ -62,7 +70,7 @@ public class PromptSelector {
             PromptStatus status = calculateStatus(prompt, senderQQ, aiEnabled);
             
             if (verboseLog) {
-                XposedBridge.log(TAG + ": [" + prompt.name + "] status=" + status.name() + " for QQ: " + senderQQ);
+                debugLog(TAG + ": [" + prompt.name + "] status=" + status.name() + " for QQ: " + senderQQ);
             }
             
             if (status == PromptStatus.FORCE_ON) {
@@ -78,17 +86,17 @@ public class PromptSelector {
         if (!forceOnPrompts.isEmpty()) {
             // 返回最高优先级的白名单提示词（第一个）
             PromptItem selected = forceOnPrompts.get(0);
-            XposedBridge.log(TAG + ": 白名单命中: " + selected.name + " for QQ: " + senderQQ);
+            debugLog(TAG + ": 白名单命中: " + selected.name + " for QQ: " + senderQQ);
             return Collections.singletonList(selected);
         }
         
         if (!defaultPrompts.isEmpty()) {
-            XposedBridge.log(TAG + ": 使用默认提示词列表 for QQ: " + senderQQ);
+            debugLog(TAG + ": 使用默认提示词列表 for QQ: " + senderQQ);
             return defaultPrompts;
         }
         
         // 全部被屏蔽
-        XposedBridge.log(TAG + ": 所有提示词被黑名单屏蔽 for QQ: " + senderQQ);
+        debugLog(TAG + ": 所有提示词被黑名单屏蔽 for QQ: " + senderQQ);
         return Collections.emptyList();
     }
     

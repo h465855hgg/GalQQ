@@ -34,6 +34,14 @@ public class CloseRankClient {
 
     private static final String TAG = "GalQQ.CloseRankClient";
     
+    private static void debugLog(String message) {
+        try {
+            if (top.galqq.config.ConfigManager.isVerboseLogEnabled()) {
+                XposedBridge.log(message);
+            }
+        } catch (Throwable ignored) {}
+    }
+    
     // 调试模式：保存请求和响应到下载目录
     private boolean mDebugMode = false;
     
@@ -133,7 +141,7 @@ public class CloseRankClient {
      */
     public void fetchBothRankData(Context context, BothRankCallback callback) {
         if (!CookieHelper.isCookiesAvailable(context)) {
-            XposedBridge.log(TAG + ": Cookie 不可用，跳过 API 请求");
+            debugLog(TAG + ": Cookie 不可用，跳过 API 请求");
             if (callback != null) {
                 mMainHandler.post(() -> callback.onFailure(new Exception("Cookie 不可用")));
             }
@@ -151,7 +159,7 @@ public class CloseRankClient {
         mClient.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
-                XposedBridge.log(TAG + ": 请求失败: " + e.getMessage());
+                debugLog(TAG + ": 请求失败: " + e.getMessage());
                 if (callback != null) {
                     mMainHandler.post(() -> callback.onFailure(e));
                 }
@@ -180,7 +188,7 @@ public class CloseRankClient {
                     }
                     
                 } catch (Exception e) {
-                    XposedBridge.log(TAG + ": 处理响应失败: " + e.getMessage());
+                    debugLog(TAG + ": 处理响应失败: " + e.getMessage());
                     if (callback != null) {
                         mMainHandler.post(() -> callback.onFailure(e));
                     }
@@ -193,7 +201,7 @@ public class CloseRankClient {
 
     private void fetchRankData(Context context, int type, RankCallback callback) {
         if (!CookieHelper.isCookiesAvailable(context)) {
-            XposedBridge.log(TAG + ": Cookie 不可用，跳过 API 请求");
+            debugLog(TAG + ": Cookie 不可用，跳过 API 请求");
             if (callback != null) {
                 mMainHandler.post(() -> callback.onFailure(new Exception("Cookie 不可用")));
             }
@@ -208,12 +216,12 @@ public class CloseRankClient {
             return;
         }
         
-        XposedBridge.log(TAG + ": 开始请求亲密度数据, type=" + type);
+        debugLog(TAG + ": 开始请求亲密度数据, type=" + type);
         
         mClient.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
-                XposedBridge.log(TAG + ": 请求失败: " + e.getMessage());
+                debugLog(TAG + ": 请求失败: " + e.getMessage());
                 if (callback != null) {
                     mMainHandler.post(() -> callback.onFailure(e));
                 }
@@ -222,19 +230,19 @@ public class CloseRankClient {
             @Override
             public void onResponse(Call call, Response response) throws IOException {
                 try {
-                    XposedBridge.log(TAG + ": ========== 好感度API响应 ==========");
-                    XposedBridge.log(TAG + ": HTTP状态码: " + response.code());
+                    debugLog(TAG + ": ========== 好感度API响应 ==========");
+                    debugLog(TAG + ": HTTP状态码: " + response.code());
                     
                     if (!response.isSuccessful()) {
-                        XposedBridge.log(TAG + ": HTTP 错误: " + response.code());
+                        debugLog(TAG + ": HTTP 错误: " + response.code());
                         throw new IOException("HTTP 错误: " + response.code());
                     }
                     
                     String html = response.body().string();
-                    XposedBridge.log(TAG + ": 响应长度: " + html.length() + " 字符");
+                    debugLog(TAG + ": 响应长度: " + html.length() + " 字符");
                     
                     String preview = html.length() > 500 ? html.substring(0, 500) + "..." : html;
-                    XposedBridge.log(TAG + ": 响应预览: " + preview);
+                    debugLog(TAG + ": 响应预览: " + preview);
                     
                     // 【调试模式】保存响应到下载目录
                     if (mDebugMode) {
@@ -242,7 +250,7 @@ public class CloseRankClient {
                     }
                     
                     Map<String, Integer> result = parseHtmlResponse(html);
-                    XposedBridge.log(TAG + ": 解析结果: 共 " + result.size() + " 条数据");
+                    debugLog(TAG + ": 解析结果: 共 " + result.size() + " 条数据");
                     
                     if (!result.isEmpty()) {
                         StringBuilder sb = new StringBuilder("好感度数据: ");
@@ -256,18 +264,18 @@ public class CloseRankClient {
                                 break;
                             }
                         }
-                        XposedBridge.log(TAG + ": " + sb.toString());
+                        debugLog(TAG + ": " + sb.toString());
                     } else {
-                        XposedBridge.log(TAG + ": 未解析到任何好感度数据！");
+                        debugLog(TAG + ": 未解析到任何好感度数据！");
                     }
-                    XposedBridge.log(TAG + ": ====================================");
+                    debugLog(TAG + ": ====================================");
                     
                     if (callback != null) {
                         mMainHandler.post(() -> callback.onSuccess(result));
                     }
                     
                 } catch (Exception e) {
-                    XposedBridge.log(TAG + ": 处理响应失败: " + e.getMessage());
+                    debugLog(TAG + ": 处理响应失败: " + e.getMessage());
                     if (callback != null) {
                         mMainHandler.post(() -> callback.onFailure(e));
                     }

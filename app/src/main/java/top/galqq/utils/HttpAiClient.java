@@ -12,16 +12,22 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import okhttp3.Authenticator;
 import okhttp3.Call;
 import okhttp3.Callback;
+import okhttp3.Credentials;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
+import okhttp3.Route;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
+
+import java.net.InetSocketAddress;
+import java.net.Proxy;
 
 import top.galqq.config.ConfigManager;
 
@@ -33,9 +39,21 @@ public class HttpAiClient {
     private static final String TAG = "GalQQ.AI";
     private static final int MAX_RETRY_COUNT = 5; // 最大重试次数
     private static OkHttpClient client;
+    private static OkHttpClient clientWithProxy;
+    private static String lastProxyConfig = ""; // 用于检测代理配置变化
     private static Handler mainHandler = new Handler(Looper.getMainLooper());
 
+    /**
+     * 获取 OkHttpClient 实例
+     * 根据代理配置自动选择是否使用代理
+     */
     private static synchronized OkHttpClient getClient() {
+        // 检查是否需要使用代理
+        if (ConfigManager.isProxyEnabled() && ConfigManager.isProxyConfigValid()) {
+            return getClientWithProxy();
+        }
+        
+        // 不使用代理的客户端
         if (client == null) {
             client = new OkHttpClient.Builder()
                     .connectTimeout(10, TimeUnit.SECONDS)
@@ -44,6 +62,229 @@ public class HttpAiClient {
                     .build();
         }
         return client;
+    }
+    
+    /**
+     * 获取带代理的 OkHttpClient 实例
+     * 支持 HTTP 和 SOCKS 代理，以及用户名密码认证
+     */
+    private static synchronized OkHttpClient getClientWithProxy() {
+        // 构建当前代理配置的唯一标识
+        String currentProxyConfig = buildProxyConfigKey();
+        
+        // 如果代理配置没有变化，复用现有客户端
+        if (clientWithProxy != null && currentProxyConfig.equals(lastProxyConfig)) {
+            return clientWithProxy;
+        }
+        
+        // 代理配置变化，重新创建客户端
+        String proxyType = ConfigManager.getProxyType();
+        String proxyHost = ConfigManager.getProxyHost();
+        int proxyPort = ConfigManager.getProxyPort();
+        
+        Log.d(TAG, "创建代理客户端: " + proxyType + "://" + proxyHost + ":" + proxyPort);
+        
+        // 创建代理对象
+        Proxy.Type type = "SOCKS".equalsIgnoreCase(proxyType) ? Proxy.Type.SOCKS : Proxy.Type.HTTP;
+        Proxy proxy = new Proxy(type, new InetSocketAddress(proxyHost, proxyPort));
+        
+        OkHttpClient.Builder builder = new OkHttpClient.Builder()
+                .proxy(proxy)
+                .connectTimeout(15, TimeUnit.SECONDS)  // 代理可能需要更长时间
+                .readTimeout(20, TimeUnit.SECONDS)
+                .writeTimeout(15, TimeUnit.SECONDS);
+        
+        // 如果启用了代理认证
+        if (ConfigManager.isProxyAuthEnabled()) {
+            String username = ConfigManager.getProxyUsername();
+            String password = ConfigManager.getProxyPassword();
+            
+            if (username != null && !username.isEmpty()) {
+                Log.d(TAG, "代理认证已启用，用户名: " + username);
+                
+                // 添加代理认证器
+                builder.proxyAuthenticator(new Authenticator() {
+                    @Override
+                    public Request authenticate(Route route, Response response) throws IOException {
+                        String credential = Credentials.basic(username, password);
+                        return response.request().newBuilder()
+                                .header("Proxy-Authorization", credential)
+                                .build();
+                    }
+                });
+            }
+        }
+        
+        clientWithProxy = builder.build();
+        lastProxyConfig = currentProxyConfig;
+        
+        return clientWithProxy;
+    }
+    
+    /**
+     * 构建代理配置的唯一标识，用于检测配置变化
+     */
+    private static String buildProxyConfigKey() {
+        return ConfigManager.getProxyType() + "://" +
+               ConfigManager.getProxyHost() + ":" +
+               ConfigManager.getProxyPort() + "@" +
+               ConfigManager.isProxyAuthEnabled() + ":" +
+               ConfigManager.getProxyUsername();
+    }
+    
+    /**
+     * 重置代理客户端（配置变化时调用）
+     */
+    public static synchronized void resetProxyClient() {
+        clientWithProxy = null;
+        lastProxyConfig = "";
+        Log.d(TAG, "代理客户端已重置");
+    }
+    
+    /**
+     * 测试代理连接（独立测试，不依赖AI API配置）
+     * 通过访问一个简单的HTTPS网站来验证代理是否工作
+     */
+    public static void testProxyConnection(Context context, ProxyTestCallback callback) {
+        if (!ConfigManager.isProxyEnabled()) {
+            callback.onResult(false, "代理未启用");
+            return;
+        }
+        
+        String host = ConfigManager.getProxyHost();
+        int port = ConfigManager.getProxyPort();
+        
+        if (host == null || host.trim().isEmpty()) {
+            callback.onResult(false, "代理地址为空");
+            return;
+        }
+        
+        String proxyType = ConfigManager.getProxyType();
+        String proxyInfo = proxyType + "://" + host + ":" + port;
+        
+        Log.d(TAG, "开始测试代理连接: " + proxyInfo);
+        
+        // 检查是否使用127.0.0.1，给出提示
+        boolean isLocalhost = host.equals("127.0.0.1") || host.equals("localhost");
+        
+        try {
+            // 创建专门用于测试的代理客户端
+            Proxy.Type type = "SOCKS".equalsIgnoreCase(proxyType) ? Proxy.Type.SOCKS : Proxy.Type.HTTP;
+            Proxy proxy = new Proxy(type, new InetSocketAddress(host, port));
+            
+            OkHttpClient.Builder builder = new OkHttpClient.Builder()
+                    .proxy(proxy)
+                    .connectTimeout(15, TimeUnit.SECONDS)
+                    .readTimeout(15, TimeUnit.SECONDS)
+                    .writeTimeout(15, TimeUnit.SECONDS);
+            
+            // 如果启用了代理认证
+            if (ConfigManager.isProxyAuthEnabled()) {
+                String username = ConfigManager.getProxyUsername();
+                String password = ConfigManager.getProxyPassword();
+                
+                if (username != null && !username.isEmpty()) {
+                    builder.proxyAuthenticator((route, response) -> {
+                        String credential = Credentials.basic(username, password);
+                        return response.request().newBuilder()
+                                .header("Proxy-Authorization", credential)
+                                .build();
+                    });
+                }
+            }
+            
+            OkHttpClient testClient = builder.build();
+            
+            // 使用多个测试URL，增加成功率
+            // 优先使用国内可访问的网站
+            String[] testUrls = {
+                "https://www.baidu.com",           // 百度，国内可直接访问
+                "https://httpbin.org/ip",          // httpbin，返回IP
+                "https://www.google.com/generate_204"  // Google连通性测试
+            };
+            
+            // 先尝试第一个URL
+            testProxyWithUrl(testClient, testUrls, 0, proxyInfo, isLocalhost, callback);
+            
+        } catch (Exception e) {
+            Log.e(TAG, "创建代理测试客户端失败", e);
+            callback.onResult(false, "创建代理客户端失败: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 使用指定URL测试代理，失败时尝试下一个URL
+     */
+    private static void testProxyWithUrl(OkHttpClient testClient, String[] testUrls, int index, 
+                                         String proxyInfo, boolean isLocalhost, ProxyTestCallback callback) {
+        if (index >= testUrls.length) {
+            // 所有URL都失败了
+            String extraTip = isLocalhost ? 
+                "\n\n提示: 你使用的是127.0.0.1，这指向手机本身。如果代理运行在电脑上，请使用电脑的局域网IP（如192.168.x.x）" : "";
+            mainHandler.post(() -> callback.onResult(false, "所有测试URL均失败" + extraTip + "\n代理: " + proxyInfo));
+            return;
+        }
+        
+        String testUrl = testUrls[index];
+        Log.d(TAG, "测试代理URL[" + index + "]: " + testUrl);
+        
+        Request request = new Request.Builder()
+                .url(testUrl)
+                .get()
+                .build();
+        
+        testClient.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                String errorMsg = e.getMessage();
+                Log.w(TAG, "代理测试URL[" + index + "]失败: " + errorMsg);
+                
+                // 尝试下一个URL
+                testProxyWithUrl(testClient, testUrls, index + 1, proxyInfo, isLocalhost, callback);
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                try {
+                    int code = response.code();
+                    // 200, 204 都算成功
+                    if (code == 200 || code == 204) {
+                        String body = response.body() != null ? response.body().string() : "";
+                        Log.d(TAG, "代理测试成功，URL: " + testUrl + ", 响应码: " + code);
+                        
+                        // 尝试解析返回的IP（如果是httpbin）
+                        String resultMsg = "代理连接正常";
+                        if (testUrl.contains("httpbin")) {
+                            try {
+                                JSONObject json = new JSONObject(body);
+                                String origin = json.optString("origin", "");
+                                if (!origin.isEmpty()) {
+                                    resultMsg = "代理连接正常\n出口IP: " + origin;
+                                }
+                            } catch (Exception e) {
+                                // 忽略解析错误
+                            }
+                        }
+                        
+                        final String finalMsg = resultMsg;
+                        mainHandler.post(() -> callback.onResult(true, finalMsg + "\n代理: " + proxyInfo));
+                    } else {
+                        // 非成功状态码，尝试下一个URL
+                        Log.w(TAG, "代理测试URL[" + index + "]返回非成功状态: " + code);
+                        testProxyWithUrl(testClient, testUrls, index + 1, proxyInfo, isLocalhost, callback);
+                    }
+                } finally {
+                    response.close();
+                }
+            }
+        });
+    }
+    
+    /**
+     * 代理测试回调接口
+     */
+    public interface ProxyTestCallback {
+        void onResult(boolean success, String message);
     }
 
     public interface AiCallback {
@@ -103,6 +344,8 @@ public class HttpAiClient {
                                           contextMessages, callback, 0);
         };
 
+        // 【关键】所有重试过程中都抑制Toast，只有最终失败时才显示
+        // 第一次请求也抑制Toast，因为可能会自动重试
         fetchOptionsInternal(context, userMessage, currentSenderName, currentTimestamp, 
                             contextMessages, null, new AiCallback() {
             @Override
@@ -113,13 +356,19 @@ public class HttpAiClient {
             @Override
             public void onFailure(Exception e) {
                 // 检查是否是格式错误（可重试的错误）
-                boolean isFormatError = e.getMessage() != null && 
-                    (e.getMessage().contains("格式") || e.getMessage().contains("选项不足"));
+                // 扩展判断条件，包括更多可能的格式错误信息
+                String errorMsg = e.getMessage();
+                boolean isFormatError = errorMsg != null && 
+                    (errorMsg.contains("格式") || 
+                     errorMsg.contains("选项不足") ||
+                     errorMsg.contains("无法识别") ||
+                     errorMsg.contains("解析") ||
+                     errorMsg.contains("parse"));
                 
                 if (isFormatError && retryCount < MAX_RETRY_COUNT - 1) {
-                    // 还有重试机会，静默重试
+                    // 还有重试机会，静默重试（不显示任何提示）
                     int nextRetry = retryCount + 1;
-                    Log.d(TAG, "格式错误，自动重试 (" + nextRetry + "/" + MAX_RETRY_COUNT + ")");
+                    Log.d(TAG, "格式错误，静默重试 (" + nextRetry + "/" + MAX_RETRY_COUNT + "): " + errorMsg);
                     
                     // 延迟500ms后重试，避免请求过快
                     mainHandler.postDelayed(() -> {
@@ -127,7 +376,7 @@ public class HttpAiClient {
                                                       currentTimestamp, contextMessages, callback, nextRetry);
                     }, 500);
                 } else if (isFormatError) {
-                    // 达到最大重试次数，通知显示重新加载按钮
+                    // 达到最大重试次数，通知显示重新加载按钮（不显示Toast）
                     Log.w(TAG, "达到最大重试次数 (" + MAX_RETRY_COUNT + ")，显示重新加载按钮");
                     logError(context, ConfigManager.getAiProvider(), ConfigManager.getAiModel(), 
                             ConfigManager.getApiUrl(), 
@@ -138,7 +387,7 @@ public class HttpAiClient {
                     callback.onFailure(e);
                 }
             }
-        }, retryCount > 0); // 重试时不显示Toast
+        }, true); // 【修改】始终抑制Toast，让重试逻辑决定是否显示
     }
 
     /**
@@ -160,6 +409,18 @@ public class HttpAiClient {
     }
     
     /**
+     * 获取AI生成的回复选项（静默模式，不显示Toast）
+     * 用于队列重试场景
+     */
+    public static void fetchOptionsSilent(Context context, String userMessage,
+                                    String currentSenderName, long currentTimestamp,
+                                    List<top.galqq.utils.MessageContextManager.ChatMessage> contextMessages,
+                                    AiCallback callback) {
+        fetchOptionsInternal(context, userMessage, currentSenderName, currentTimestamp, 
+                            contextMessages, null, callback, true);
+    }
+    
+    /**
      * 获取AI生成的回复选项（带自定义提示词）
      * 
      * @param context Android上下文
@@ -177,6 +438,19 @@ public class HttpAiClient {
                                     AiCallback callback) {
         fetchOptionsInternal(context, userMessage, currentSenderName, currentTimestamp, 
                             contextMessages, customPrompt, callback, false);
+    }
+    
+    /**
+     * 获取AI生成的回复选项（带自定义提示词，静默模式）
+     * 用于队列重试场景
+     */
+    public static void fetchOptionsWithPromptSilent(Context context, String userMessage,
+                                    String currentSenderName, long currentTimestamp,
+                                    List<top.galqq.utils.MessageContextManager.ChatMessage> contextMessages,
+                                    String customPrompt,
+                                    AiCallback callback) {
+        fetchOptionsInternal(context, userMessage, currentSenderName, currentTimestamp, 
+                            contextMessages, customPrompt, callback, true);
     }
 
     /**
@@ -370,8 +644,9 @@ public class HttpAiClient {
                             return;
                         }
 
-                        // 成功
-                        AiLogManager.logAiSuccess(context, provider, model, userMessage, options.size());
+                        // 成功 - 如果启用了详细日志，记录完整响应
+                        String fullResponse = ConfigManager.isVerboseLogEnabled() ? responseBody : null;
+                        AiLogManager.logAiSuccess(context, provider, model, userMessage, options.size(), fullResponse);
                         callback.onSuccess(options);
 
                     } catch (Exception e) {
@@ -404,6 +679,7 @@ public class HttpAiClient {
      * 1. 直接JSON格式（响应本身就是options JSON）
      * 2. OpenAI标准格式（choices[0].message.content）
      * 3. 从content中提取：Markdown代码块、混合文本JSON、列表、纯文本
+     * 4. 处理多个JSON对象拼接的情况（流式响应或重试响应）
      */
     private static List<String> parseJsonResponse(String responseBody) {
         // 边界情况处理
@@ -414,35 +690,42 @@ public class HttpAiClient {
         
         List<String> result = null;
         
+        // 预处理：处理多个JSON对象拼接的情况
+        // 例如: {...}{...} 或 {...}\n{...}
+        String cleanedResponse = preprocessMultipleJsonObjects(responseBody);
+        
         try {
-            JSONObject jsonResponse = new JSONObject(responseBody);
+            JSONObject jsonResponse = new JSONObject(cleanedResponse);
             
             // 策略1: 直接包含options等字段
-            result = parseOptionsJson(responseBody);
+            result = parseOptionsJson(cleanedResponse);
             if (result != null && result.size() >= 3) {
                 Log.d(TAG, "解析成功: 直接JSON格式");
                 return result;
             }
             
             // 策略2: OpenAI标准格式
-            if (jsonResponse.has("choices")) {
-                JSONArray choices = jsonResponse.getJSONArray("choices");
-                if (choices.length() > 0) {
-                    String content = choices.getJSONObject(0)
-                            .getJSONObject("message")
-                            .getString("content");
-                    
-                    // 从content中尝试多种解析策略
-                    result = parseContentWithStrategies(content);
-                    if (result != null && result.size() >= 3) {
-                        return result;
-                    }
-                }
+            result = parseOpenAiFormat(jsonResponse);
+            if (result != null && result.size() >= 3) {
+                return result;
             }
             
         } catch (Exception e) {
-            // 响应本身不是有效JSON，尝试作为纯文本解析
-            Log.d(TAG, "响应不是标准JSON，尝试其他解析策略");
+            // 响应本身不是有效JSON，尝试其他策略
+            Log.d(TAG, "响应不是标准JSON，尝试其他解析策略: " + e.getMessage());
+        }
+        
+        // 策略3: 尝试从原始响应中提取有效的JSON对象
+        result = tryExtractValidJsonFromResponse(responseBody);
+        if (result != null && result.size() >= 3) {
+            return result;
+        }
+        
+        // 【重要】不要在整个响应体上执行纯文本解析！
+        // 这会导致JSON字段名被当作选项
+        // 只有当响应明显不是JSON格式时才尝试纯文本解析
+        if (!responseBody.trim().startsWith("{") && !responseBody.trim().startsWith("[")) {
+            // 策略4: 作为纯文本解析（仅当响应不是JSON格式时）
             result = parseContentWithStrategies(responseBody);
             if (result != null && result.size() >= 3) {
                 return result;
@@ -452,6 +735,242 @@ public class HttpAiClient {
         Log.w(TAG, "所有解析策略均失败，请检查系统提示词配置");
         return null;
     }
+    
+    /**
+     * 预处理多个JSON对象拼接的响应
+     * 处理情况：{...}{...} 或 {...}\n{...}
+     * 只保留第一个有效的JSON对象
+     */
+    private static String preprocessMultipleJsonObjects(String responseBody) {
+        if (responseBody == null || responseBody.isEmpty()) {
+            return responseBody;
+        }
+        
+        String trimmed = responseBody.trim();
+        
+        // 检查是否以 { 开头
+        if (!trimmed.startsWith("{")) {
+            return responseBody;
+        }
+        
+        // 找到第一个完整的JSON对象
+        int depth = 0;
+        int endIndex = -1;
+        boolean inString = false;
+        boolean escape = false;
+        
+        for (int i = 0; i < trimmed.length(); i++) {
+            char c = trimmed.charAt(i);
+            
+            if (escape) {
+                escape = false;
+                continue;
+            }
+            
+            if (c == '\\' && inString) {
+                escape = true;
+                continue;
+            }
+            
+            if (c == '"' && !escape) {
+                inString = !inString;
+                continue;
+            }
+            
+            if (!inString) {
+                if (c == '{') {
+                    depth++;
+                } else if (c == '}') {
+                    depth--;
+                    if (depth == 0) {
+                        endIndex = i;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if (endIndex > 0 && endIndex < trimmed.length() - 1) {
+            // 检查后面是否还有内容（可能是另一个JSON对象）
+            String remaining = trimmed.substring(endIndex + 1).trim();
+            if (remaining.startsWith("{")) {
+                Log.d(TAG, "检测到多个JSON对象拼接，只使用第一个");
+                return trimmed.substring(0, endIndex + 1);
+            }
+        }
+        
+        return responseBody;
+    }
+    
+    /**
+     * 解析OpenAI标准格式响应
+     * 处理choices数组，提取有效的content
+     */
+    private static List<String> parseOpenAiFormat(JSONObject jsonResponse) {
+        try {
+            if (!jsonResponse.has("choices")) {
+                Log.d(TAG, "parseOpenAiFormat: 没有choices字段");
+                return null;
+            }
+            
+            JSONArray choices = jsonResponse.getJSONArray("choices");
+            if (choices.length() == 0) {
+                Log.d(TAG, "parseOpenAiFormat: choices数组为空");
+                return null;
+            }
+            
+            Log.d(TAG, "parseOpenAiFormat: 找到 " + choices.length() + " 个choices");
+            
+            // 遍历所有choices，找到有有效content的那个
+            for (int i = 0; i < choices.length(); i++) {
+                JSONObject choice = choices.getJSONObject(i);
+                
+                // 检查finish_reason，跳过被截断的响应
+                String finishReason = choice.optString("finish_reason", "");
+                Log.d(TAG, "parseOpenAiFormat: choice[" + i + "] finish_reason=" + finishReason);
+                
+                if ("length".equals(finishReason)) {
+                    Log.d(TAG, "跳过被截断的choice (finish_reason=length)");
+                    continue;
+                }
+                
+                // 获取message对象
+                if (!choice.has("message")) {
+                    Log.d(TAG, "parseOpenAiFormat: choice[" + i + "] 没有message字段");
+                    continue;
+                }
+                
+                JSONObject message = choice.getJSONObject("message");
+                
+                // 获取content - 尝试多种方式
+                String content = message.optString("content", "");
+                
+                // 如果content为空，尝试其他可能的字段
+                if (content.isEmpty()) {
+                    content = message.optString("text", "");
+                }
+                
+                if (content.isEmpty()) {
+                    Log.d(TAG, "choice[" + i + "] content为空，跳过");
+                    continue;
+                }
+                
+                Log.d(TAG, "parseOpenAiFormat: choice[" + i + "] content长度=" + content.length());
+                Log.d(TAG, "parseOpenAiFormat: content前100字符=" + content.substring(0, Math.min(100, content.length())));
+                
+                // 从content中尝试多种解析策略
+                List<String> result = parseContentWithStrategies(content);
+                if (result != null && result.size() >= 3) {
+                    Log.d(TAG, "解析成功: OpenAI格式 choice[" + i + "], 选项数=" + result.size());
+                    return result;
+                } else {
+                    Log.d(TAG, "parseOpenAiFormat: choice[" + i + "] parseContentWithStrategies返回null或不足3个");
+                }
+            }
+            
+            return null;
+        } catch (Exception e) {
+            Log.e(TAG, "parseOpenAiFormat失败: " + e.getMessage(), e);
+            return null;
+        }
+    }
+    
+    /**
+     * 尝试从原始响应中提取有效的JSON对象并解析
+     * 处理多个JSON对象拼接的情况
+     */
+    private static List<String> tryExtractValidJsonFromResponse(String responseBody) {
+        if (responseBody == null || responseBody.isEmpty()) {
+            return null;
+        }
+        
+        // 尝试找到所有可能的JSON对象
+        List<String> jsonObjects = extractAllJsonObjects(responseBody);
+        
+        for (String jsonStr : jsonObjects) {
+            try {
+                JSONObject json = new JSONObject(jsonStr);
+                
+                // 尝试作为OpenAI格式解析
+                List<String> result = parseOpenAiFormat(json);
+                if (result != null && result.size() >= 3) {
+                    Log.d(TAG, "从拼接响应中提取成功");
+                    return result;
+                }
+                
+                // 尝试直接解析options
+                result = parseOptionsJson(jsonStr);
+                if (result != null && result.size() >= 3) {
+                    return result;
+                }
+            } catch (Exception e) {
+                // 继续尝试下一个
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * 从响应中提取所有JSON对象
+     */
+    private static List<String> extractAllJsonObjects(String responseBody) {
+        List<String> result = new ArrayList<>();
+        
+        int index = 0;
+        while (index < responseBody.length()) {
+            int start = responseBody.indexOf('{', index);
+            if (start == -1) {
+                break;
+            }
+            
+            // 找到匹配的闭合大括号
+            int depth = 0;
+            int end = -1;
+            boolean inString = false;
+            boolean escape = false;
+            
+            for (int i = start; i < responseBody.length(); i++) {
+                char c = responseBody.charAt(i);
+                
+                if (escape) {
+                    escape = false;
+                    continue;
+                }
+                
+                if (c == '\\' && inString) {
+                    escape = true;
+                    continue;
+                }
+                
+                if (c == '"' && !escape) {
+                    inString = !inString;
+                    continue;
+                }
+                
+                if (!inString) {
+                    if (c == '{') {
+                        depth++;
+                    } else if (c == '}') {
+                        depth--;
+                        if (depth == 0) {
+                            end = i;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if (end > start) {
+                result.add(responseBody.substring(start, end + 1));
+                index = end + 1;
+            } else {
+                index = start + 1;
+            }
+        }
+        
+        return result;
+    }
 
     /**
      * 使用多种策略解析content内容
@@ -460,30 +979,34 @@ public class HttpAiClient {
      */
     private static List<String> parseContentWithStrategies(String content) {
         if (content == null || content.trim().isEmpty()) {
+            Log.d(TAG, "parseContentWithStrategies: content为空");
             return null;
         }
+        
+        Log.d(TAG, "parseContentWithStrategies: 开始解析，content长度=" + content.length());
         
         List<String> result = null;
         
         // 策略A: 直接作为JSON解析（支持多种字段名）
         result = parseOptionsJson(content);
         if (result != null && result.size() >= 3) {
-            Log.d(TAG, "解析成功: content直接JSON");
+            Log.d(TAG, "解析成功: content直接JSON, 选项数=" + result.size());
             return result;
         }
         
         // 策略B: 从Markdown代码块中提取JSON
         String markdownJson = extractJsonFromMarkdown(content);
         if (markdownJson != null) {
+            Log.d(TAG, "parseContentWithStrategies: 找到Markdown代码块，长度=" + markdownJson.length());
             result = parseOptionsJson(markdownJson);
             if (result != null && result.size() >= 3) {
-                Log.d(TAG, "解析成功: Markdown代码块");
+                Log.d(TAG, "解析成功: Markdown代码块, 选项数=" + result.size());
                 return result;
             }
             // 尝试从不完整的JSON中提取选项
             result = extractOptionsFromIncompleteJson(markdownJson);
             if (result != null && result.size() >= 3) {
-                Log.d(TAG, "解析成功: 不完整Markdown JSON");
+                Log.d(TAG, "解析成功: 不完整Markdown JSON, 选项数=" + result.size());
                 return result;
             }
         }
@@ -511,21 +1034,28 @@ public class HttpAiClient {
             return result;
         }
         
-        // 策略E: 旧格式（|||分隔）
+        // 策略E: 从任意代码块中提取（更宽松的匹配）
+        result = extractFromAnyCodeBlock(content);
+        if (result != null && result.size() >= 3) {
+            Log.d(TAG, "解析成功: 任意代码块提取");
+            return result;
+        }
+        
+        // 策略G: 旧格式（|||分隔）
         result = parseLegacyFormat(content);
         if (result != null && result.size() >= 3) {
             Log.d(TAG, "解析成功: |||分隔格式");
             return result;
         }
         
-        // 策略F: 编号/项目符号列表
+        // 策略H: 编号/项目符号列表
         result = parseNumberedList(content);
         if (result != null && result.size() >= 3) {
             Log.d(TAG, "解析成功: 编号列表格式");
             return result;
         }
         
-        // 策略G: 纯文本行（最后的备选方案）
+        // 策略I: 纯文本行（最后的备选方案）
         result = parsePlainLines(content);
         if (result != null && result.size() >= 3) {
             Log.d(TAG, "解析成功: 纯文本行格式");
@@ -541,12 +1071,43 @@ public class HttpAiClient {
     private static List<String> jsonArrayToList(JSONArray array) throws Exception {
         List<String> result = new ArrayList<>();
         for (int i = 0; i < array.length(); i++) {
-            String option = array.getString(i).trim();
+            String option = cleanOptionText(array.getString(i));
             if (!option.isEmpty()) {
                 result.add(option);
             }
         }
         return result;
+    }
+    
+    /**
+     * 清理选项文本
+     * 去除首尾空白、首尾引号等
+     */
+    private static String cleanOptionText(String text) {
+        if (text == null) {
+            return "";
+        }
+        
+        String cleaned = text.trim();
+        
+        // 去除首尾的双引号
+        if (cleaned.length() >= 2 && cleaned.startsWith("\"") && cleaned.endsWith("\"")) {
+            cleaned = cleaned.substring(1, cleaned.length() - 1).trim();
+        }
+        
+        // 去除首尾的单引号
+        if (cleaned.length() >= 2 && cleaned.startsWith("'") && cleaned.endsWith("'")) {
+            cleaned = cleaned.substring(1, cleaned.length() - 1).trim();
+        }
+        
+        // 去除首尾的中文引号
+        if (cleaned.length() >= 2) {
+             if ((cleaned.startsWith("“") && cleaned.endsWith("”"))){
+                 cleaned = cleaned.substring(1, cleaned.length() - 1).trim();
+             }
+         }
+        
+        return cleaned;
     }
 
     /**
@@ -556,9 +1117,9 @@ public class HttpAiClient {
         String[] parts = content.split("\\|\\|\\|");
         List<String> result = new ArrayList<>();
         for (String part : parts) {
-            String trimmed = part.trim();
-            if (!trimmed.isEmpty()) {
-                result.add(trimmed);
+            String cleaned = cleanOptionText(part);
+            if (!cleaned.isEmpty()) {
+                result.add(cleaned);
             }
         }
         return result.size() >= 3 ? result : null;
@@ -577,8 +1138,7 @@ public class HttpAiClient {
             return null;
         }
         
-        // 匹配 ```json ... ``` 或 ``` ... ``` 格式
-        // 使用非贪婪匹配，取第一个代码块
+        // 方法1：使用正则表达式匹配 ```json ... ``` 或 ``` ... ``` 格式
         java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
             "```(?:json)?\\s*\\n?([\\s\\S]*?)\\n?```",
             java.util.regex.Pattern.CASE_INSENSITIVE
@@ -587,9 +1147,119 @@ public class HttpAiClient {
         
         if (matcher.find()) {
             String extracted = matcher.group(1);
-            if (extracted != null) {
+            if (extracted != null && !extracted.trim().isEmpty()) {
+                Log.d(TAG, "extractJsonFromMarkdown: 正则匹配成功，长度=" + extracted.length());
                 return extracted.trim();
             }
+        }
+        
+        // 方法2：手动查找 ```json 和 ``` 之间的内容（更健壮）
+        String lowerContent = content.toLowerCase();
+        int startIndex = lowerContent.indexOf("```json");
+        if (startIndex == -1) {
+            startIndex = lowerContent.indexOf("```");
+        }
+        
+        if (startIndex != -1) {
+            // 找到开始标记后的换行符
+            int contentStart = content.indexOf('\n', startIndex);
+            if (contentStart == -1) {
+                contentStart = startIndex + 7; // "```json" 的长度
+            } else {
+                contentStart++; // 跳过换行符
+            }
+            
+            // 找到结束的 ```
+            int endIndex = content.indexOf("```", contentStart);
+            if (endIndex != -1 && endIndex > contentStart) {
+                String extracted = content.substring(contentStart, endIndex).trim();
+                if (!extracted.isEmpty()) {
+                    Log.d(TAG, "extractJsonFromMarkdown: 手动提取成功，长度=" + extracted.length());
+                    return extracted;
+                }
+            }
+        }
+        
+        Log.d(TAG, "extractJsonFromMarkdown: 未找到Markdown代码块");
+        return null;
+    }
+
+    /**
+     * 从任意代码块中提取内容并尝试解析
+     * 更宽松的匹配方式，处理各种格式的代码块
+     * @param content 包含代码块的内容
+     * @return 解析出的选项列表
+     */
+    private static List<String> extractFromAnyCodeBlock(String content) {
+        if (content == null || content.isEmpty()) {
+            return null;
+        }
+        
+        // 查找所有 ``` 包围的代码块
+        int searchStart = 0;
+        while (searchStart < content.length()) {
+            // 找到开始的 ```
+            int blockStart = content.indexOf("```", searchStart);
+            if (blockStart == -1) {
+                break;
+            }
+            
+            // 跳过 ``` 后面可能的语言标识（如 json, javascript 等）
+            int contentStart = blockStart + 3;
+            // 找到换行符或直接开始内容
+            int newlinePos = content.indexOf('\n', contentStart);
+            if (newlinePos != -1 && newlinePos < contentStart + 20) {
+                // 检查 ``` 和换行之间是否只有语言标识
+                String langTag = content.substring(contentStart, newlinePos).trim();
+                if (langTag.isEmpty() || langTag.matches("^[a-zA-Z]+$")) {
+                    contentStart = newlinePos + 1;
+                }
+            }
+            
+            // 找到结束的 ```
+            int blockEnd = content.indexOf("```", contentStart);
+            if (blockEnd == -1) {
+                break;
+            }
+            
+            // 提取代码块内容
+            String blockContent = content.substring(contentStart, blockEnd).trim();
+            Log.d(TAG, "extractFromAnyCodeBlock: 找到代码块，长度=" + blockContent.length());
+            
+            if (!blockContent.isEmpty()) {
+                // 尝试多种解析方式
+                
+                // 1. 直接作为JSON解析
+                List<String> result = parseOptionsJson(blockContent);
+                if (result != null && result.size() >= 3) {
+                    Log.d(TAG, "extractFromAnyCodeBlock: JSON解析成功");
+                    return result;
+                }
+                
+                // 2. 从不完整JSON中提取
+                result = extractOptionsFromIncompleteJson(blockContent);
+                if (result != null && result.size() >= 3) {
+                    Log.d(TAG, "extractFromAnyCodeBlock: 不完整JSON提取成功");
+                    return result;
+                }
+                
+                // 3. 作为编号列表解析
+                result = parseNumberedList(blockContent);
+                if (result != null && result.size() >= 3) {
+                    Log.d(TAG, "extractFromAnyCodeBlock: 编号列表解析成功");
+                    return result;
+                }
+                
+                // 4. 作为纯文本行解析
+                result = parsePlainLines(blockContent);
+                if (result != null && result.size() >= 3) {
+                    Log.d(TAG, "extractFromAnyCodeBlock: 纯文本行解析成功");
+                    return result;
+                }
+            }
+            
+            // 继续查找下一个代码块
+            searchStart = blockEnd + 3;
         }
         
         return null;
@@ -636,7 +1306,8 @@ public class HttpAiClient {
 
     /**
      * 解析options JSON对象
-     * 支持多种字段名：options, choices, replies, answers, responses
+     * 支持多种字段名：options, replies, answers, responses
+     * 注意：不处理OpenAI格式的choices（那是包含message对象的数组）
      * @param jsonStr JSON字符串
      * @return 选项列表，如果解析失败返回null
      */
@@ -648,13 +1319,35 @@ public class HttpAiClient {
         try {
             JSONObject json = new JSONObject(jsonStr);
             
-            // 尝试多种字段名
-            String[] fieldNames = {"options", "choices", "replies", "answers", "responses"};
+            // 尝试多种字段名（不包括OpenAI格式的choices）
+            String[] fieldNames = {"options", "replies", "answers", "responses"};
             for (String fieldName : fieldNames) {
                 if (json.has(fieldName)) {
                     Object value = json.get(fieldName);
                     if (value instanceof JSONArray) {
-                        return jsonArrayToList((JSONArray) value);
+                        JSONArray array = (JSONArray) value;
+                        // 检查数组元素是否是字符串（而不是对象）
+                        if (array.length() > 0) {
+                            Object firstElement = array.get(0);
+                            if (firstElement instanceof String) {
+                                return jsonArrayToList(array);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 特殊处理：如果有choices字段，检查是否是简单字符串数组（而不是OpenAI格式）
+            if (json.has("choices")) {
+                Object choicesValue = json.get("choices");
+                if (choicesValue instanceof JSONArray) {
+                    JSONArray choices = (JSONArray) choicesValue;
+                    if (choices.length() > 0) {
+                        Object firstElement = choices.get(0);
+                        // 只有当第一个元素是字符串时才处理（排除OpenAI格式的对象数组）
+                        if (firstElement instanceof String) {
+                            return jsonArrayToList(choices);
+                        }
                     }
                 }
             }
@@ -690,9 +1383,9 @@ public class HttpAiClient {
             if (matcher.find()) {
                 String item = matcher.group(1);
                 if (item != null) {
-                    item = item.trim();
-                    if (!item.isEmpty()) {
-                        result.add(item);
+                    String cleaned = cleanOptionText(item);
+                    if (!cleaned.isEmpty()) {
+                        result.add(cleaned);
                     }
                 }
             }
@@ -718,7 +1411,10 @@ public class HttpAiClient {
         for (String line : lines) {
             String trimmed = line.trim();
             if (!trimmed.isEmpty() && isValidOptionLine(trimmed)) {
-                result.add(trimmed);
+                String cleaned = cleanOptionText(trimmed);
+                if (!cleaned.isEmpty()) {
+                    result.add(cleaned);
+                }
             }
         }
         
@@ -739,33 +1435,83 @@ public class HttpAiClient {
         List<String> result = new ArrayList<>();
         
         // 使用正则匹配JSON数组中的字符串元素
-        // 匹配 "内容" 或 "内容", 格式
+        // 只匹配数组元素格式：  "内容"  或  "内容",  （前面不能是冒号，避免匹配字段值）
         java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
-            "\"([^\"]+)\"\\s*,?",
+            "(?<!:)\\s*\"([^\"]{5,})\"\\s*[,\\]]?",  // 至少5个字符，避免匹配短字段名
             java.util.regex.Pattern.MULTILINE
         );
         java.util.regex.Matcher matcher = pattern.matcher(content);
         
-        // 跳过字段名（如 "options", "choices" 等）
-        java.util.Set<String> fieldNames = new java.util.HashSet<>();
-        fieldNames.add("options");
-        fieldNames.add("choices");
-        fieldNames.add("replies");
-        fieldNames.add("answers");
-        fieldNames.add("responses");
+        // 需要过滤的字段名和API元数据
+        java.util.Set<String> skipValues = new java.util.HashSet<>();
+        // JSON字段名
+        skipValues.add("options");
+        skipValues.add("choices");
+        skipValues.add("replies");
+        skipValues.add("answers");
+        skipValues.add("responses");
+        skipValues.add("message");
+        skipValues.add("content");
+        skipValues.add("role");
+        skipValues.add("finish_reason");
+        skipValues.add("index");
+        skipValues.add("created");
+        skipValues.add("model");
+        skipValues.add("object");
+        skipValues.add("usage");
+        skipValues.add("completion_tokens");
+        skipValues.add("prompt_tokens");
+        skipValues.add("total_tokens");
+        // API响应值
+        skipValues.add("stop");
+        skipValues.add("length");
+        skipValues.add("assistant");
+        skipValues.add("user");
+        skipValues.add("system");
+        skipValues.add("chat.completion");
         
         while (matcher.find()) {
             String value = matcher.group(1);
             if (value != null && !value.isEmpty()) {
-                // 跳过字段名
-                if (fieldNames.contains(value.toLowerCase())) {
+                String lowerValue = value.toLowerCase().trim();
+                
+                // 跳过已知的字段名和元数据
+                if (skipValues.contains(lowerValue)) {
                     continue;
                 }
+                
                 // 跳过太短的内容（可能是JSON语法）
-                if (value.length() < 2) {
+                if (value.length() < 5) {
                     continue;
                 }
-                result.add(value.trim());
+                
+                // 跳过看起来像ID的字符串
+                if (value.matches("^[A-Za-z0-9_-]{15,50}$")) {
+                    continue;
+                }
+                
+                // 跳过模型名称
+                if (lowerValue.startsWith("gpt-") || lowerValue.startsWith("gemini-") ||
+                    lowerValue.startsWith("claude-") || lowerValue.startsWith("deepseek-") ||
+                    lowerValue.startsWith("qwen-") || lowerValue.startsWith("glm-")) {
+                    continue;
+                }
+                
+                // 跳过纯数字
+                if (value.matches("^\\d+$")) {
+                    continue;
+                }
+                
+                // 跳过纯英文单词（可能是字段名）
+                if (value.matches("^[a-zA-Z_]+$")) {
+                    continue;
+                }
+                
+                // 清理并添加
+                String cleaned = cleanOptionText(value);
+                if (!cleaned.isEmpty()) {
+                    result.add(cleaned);
+                }
             }
         }
         
@@ -774,7 +1520,7 @@ public class HttpAiClient {
 
     /**
      * 判断一行是否是有效的选项内容
-     * 过滤掉JSON/代码格式的行
+     * 过滤掉JSON/代码格式的行和API响应元数据
      * @param line 要检查的行
      * @return 如果是有效选项返回true
      */
@@ -805,9 +1551,88 @@ public class HttpAiClient {
             return false;
         }
         
-        // 过滤JSON数组元素格式（如 "选项内容", 或 "选项内容"）
-        // 但要保留实际内容，所以提取引号内的内容
-        // 这里不过滤，让后面的清理逻辑处理
+        // 【重要】过滤所有常见的JSON字段名和API响应元数据
+        String lowerLine = line.toLowerCase().trim();
+        
+        // 过滤常见的JSON字段名（这些是图片中显示的问题字段）
+        java.util.Set<String> invalidValues = new java.util.HashSet<>();
+        // API响应字段名
+        invalidValues.add("finish_reason");
+        invalidValues.add("length");
+        invalidValues.add("index");
+        invalidValues.add("message");
+        invalidValues.add("role");
+        invalidValues.add("assistant");
+        invalidValues.add("created");
+        invalidValues.add("id");
+        invalidValues.add("model");
+        invalidValues.add("object");
+        invalidValues.add("chat.completion");
+        invalidValues.add("usage");
+        invalidValues.add("completion_tokens");
+        invalidValues.add("prompt_tokens");
+        invalidValues.add("total_tokens");
+        // finish_reason 值
+        invalidValues.add("stop");
+        invalidValues.add("content_filter");
+        invalidValues.add("tool_calls");
+        invalidValues.add("function_call");
+        // role 值
+        invalidValues.add("user");
+        invalidValues.add("system");
+        invalidValues.add("function");
+        invalidValues.add("tool");
+        // 其他常见字段
+        invalidValues.add("content");
+        invalidValues.add("choices");
+        invalidValues.add("options");
+        invalidValues.add("text");
+        invalidValues.add("data");
+        invalidValues.add("error");
+        invalidValues.add("status");
+        invalidValues.add("code");
+        invalidValues.add("type");
+        invalidValues.add("name");
+        invalidValues.add("value");
+        
+        if (invalidValues.contains(lowerLine)) {
+            return false;
+        }
+        
+        // 过滤看起来像ID的字符串（通常是随机字符串，如 _Zguae_rBpTSqfkPjrrksAQ）
+        // 特征：只包含字母数字和下划线/横线，长度在10-60之间
+        if (line.matches("^[A-Za-z0-9_-]{10,60}$")) {
+            return false;
+        }
+        
+        // 过滤模型名称（常见格式）
+        if (lowerLine.startsWith("gpt-") || lowerLine.startsWith("gemini-") ||
+            lowerLine.startsWith("claude-") || lowerLine.startsWith("deepseek-") ||
+            lowerLine.startsWith("qwen-") || lowerLine.startsWith("glm-") ||
+            lowerLine.startsWith("moonshot-") || lowerLine.startsWith("kimi-") ||
+            lowerLine.startsWith("llama-") || lowerLine.startsWith("mistral-")) {
+            return false;
+        }
+        
+        // 过滤纯数字（可能是token计数、时间戳等）
+        if (line.matches("^\\d+$")) {
+            return false;
+        }
+        
+        // 过滤JSON键值对格式（如 "key": value 或 "key": "value"）
+        if (line.matches("^\"?\\w+\"?\\s*:\\s*.+$")) {
+            return false;
+        }
+        
+        // 过滤纯英文单词（可能是字段名，至少要有中文或特殊字符才是有效选项）
+        if (line.matches("^[a-zA-Z_]+$")) {
+            return false;
+        }
+        
+        // 过滤下划线连接的英文单词（如 completion_tokens）
+        if (line.matches("^[a-zA-Z]+(_[a-zA-Z]+)+$")) {
+            return false;
+        }
         
         return true;
     }

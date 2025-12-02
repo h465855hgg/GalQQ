@@ -15,19 +15,47 @@ public class MessageSendTracker {
     private static final String TAG = "GalQQ.MSG_DETAIL";
     private static boolean isTracking = false;
     
+    /**
+     * 调试日志输出（受 gal_debug_hook_log 配置开关控制）
+     * 安全检查 ConfigManager 是否已初始化
+     */
+    private static void debugLog(String message) {
+        try {
+            if (top.galqq.config.ConfigManager.isDebugHookLogEnabled()) {
+                de.robv.android.xposed.XposedBridge.log(message);
+            }
+        } catch (Throwable ignored) {
+            // ConfigManager 未初始化时忽略
+        }
+    }
+    
+    /**
+     * 调试日志输出异常（受 gal_debug_hook_log 配置开关控制）
+     * 安全检查 ConfigManager 是否已初始化
+     */
+    private static void debugLog(Throwable t) {
+        try {
+            if (top.galqq.config.ConfigManager.isDebugHookLogEnabled()) {
+                de.robv.android.xposed.XposedBridge.log(t);
+            }
+        } catch (Throwable ignored) {
+            // ConfigManager 未初始化时忽略
+        }
+    }
+
     public static void startTracking(Context context) {
         if (isTracking) return;
         
-        XposedBridge.log(TAG + ": ========== 启动消息内容追踪 ==========");
+        debugLog(TAG + ": ========== 启动消息内容追踪 ==========");
         isTracking = true;
         
         try {
             hookAIOSendMsgVMDelegate(context);
             hookToSaveVMDelegateInstance(context);  // Hook来保存实例
-            XposedBridge.log(TAG + ": ========== 追踪已就绪 ==========");
+            debugLog(TAG + ": ========== 追踪已就绪 ==========");
         } catch (Throwable t) {
-            XposedBridge.log(TAG + ": 启动失败");
-            XposedBridge.log(t);
+            debugLog(TAG + ": 启动失败");
+            debugLog(t);
         }
     }
     
@@ -51,7 +79,7 @@ public class MessageSendTracker {
             XposedBridge.hookAllConstructors(vmDelegateClass, new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                    //XposedBridge.log(TAG + ": AIOSendMsgVMDelegate构造函数被调用，保存实例");
+                    //debugLog(TAG + ": AIOSendMsgVMDelegate构造函数被调用，保存实例");
                     SendMessageHelper.setAIOSendMsgVMDelegate(param.thisObject);
                 }
             });
@@ -78,13 +106,13 @@ public class MessageSendTracker {
                         SendMessageHelper.setAIOSendMsgVMDelegate(param.thisObject);
                     }
                 });
-                //XposedBridge.log(TAG + ": 动态Hook发送方法成功: " + sendMethod.getName());
+                //debugLog(TAG + ": 动态Hook发送方法成功: " + sendMethod.getName());
             } else {
-                XposedBridge.log(TAG + ": 未找到符合特征的发送方法，仅依赖构造函数Hook");
+                debugLog(TAG + ": 未找到符合特征的发送方法，仅依赖构造函数Hook");
             }
             
         } catch (Throwable t) {
-            XposedBridge.log(TAG + ": Hook保存VM Delegate实例失败: " + t.getMessage());
+            debugLog(TAG + ": Hook保存VM Delegate实例失败: " + t.getMessage());
         }
     }
     
@@ -111,29 +139,29 @@ public class MessageSendTracker {
                     XposedBridge.hookMethod(method, new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                            //XposedBridge.log(TAG + ": ═══════════════════════════════════");
-                            //XposedBridge.log(TAG + ": [AIOSendMsgVMDelegate." + methodName + "] (" + param.args.length + "参数)");
-                            //XposedBridge.log(TAG + ": 参数类型: " + Arrays.toString(paramTypes));
+                            debugLog(TAG + ": ═══════════════════════════════════");
+                            debugLog(TAG + ": [AIOSendMsgVMDelegate." + methodName + "] (" + param.args.length + "参数)");
+                            debugLog(TAG + ": 参数类型: " + Arrays.toString(paramTypes));
                             
                             for (int i = 0; i < param.args.length; i++) {
                                 Object arg = param.args[i];
                                 if (arg == null) {
-                                    //XposedBridge.log(TAG + ": [" + i + "] null");
+                                    debugLog(TAG + ": [" + i + "] null");
                                     continue;
                                 }
                                 
                                 String className = arg.getClass().getName();
-                                //XposedBridge.log(TAG + ": [" + i + "] " + className);
+                                debugLog(TAG + ": [" + i + "] " + className);
                                 
                                 // 如果是ArrayList，深入分析
                                 if (arg instanceof java.util.List) {
                                     java.util.List<?> list = (java.util.List<?>) arg;
-                                    //XposedBridge.log(TAG + ":   → List大小: " + list.size());
+                                    debugLog(TAG + ":   → List大小: " + list.size());
                                     
                                     for (int j = 0; j < list.size(); j++) {
                                         Object item = list.get(j);
                                         if (item != null) {
-                                            //XposedBridge.log(TAG + ":   → [" + j + "] " + item.getClass().getName());
+                                            debugLog(TAG + ":   → [" + j + "] " + item.getClass().getName());
                                             
                                             // 如果是msg.data.a，深入分析其字段
                                             if (item.getClass().getName().contains("msg.data.a")) {
@@ -147,17 +175,17 @@ public class MessageSendTracker {
                                     android.os.Bundle bundle = (android.os.Bundle) arg;
                                     String inputText = bundle.getString("input_text");
                                     if (inputText != null) {
-                                        //XposedBridge.log(TAG + ":   ★★★ 消息文本: " + inputText + " ★★★");
+                                        debugLog(TAG + ":   ★★★ 消息文本: " + inputText + " ★★★");
                                     }
                                 }
                                 // 其他对象
                                 else {
                                     String str = arg.toString();
                                     if (str.length() > 200) str = str.substring(0, 200) + "...";
-                                    //XposedBridge.log(TAG + ":   = " + str);
+                                    debugLog(TAG + ":   = " + str);
                                 }
                             }
-                            //XposedBridge.log(TAG + ": ═══════════════════════════════════");
+                            debugLog(TAG + ": ═══════════════════════════════════");
                             
                             // 【提取发送的消息并添加到上下文】- 只在n0方法中执行
                             if (methodName.equals("n0")) {
@@ -195,8 +223,8 @@ public class MessageSendTracker {
                                                     try {
                                                         Object replyElement = XposedHelpers.getObjectField(element, "h");
                                                         if (replyElement != null) {
-                                                            //XposedBridge.log(TAG + ": ★★★ 发现 ReplyElement ★★★");
-                                                            //XposedBridge.log(TAG + ": ReplyElement class: " + replyElement.getClass().getName());
+                                                            debugLog(TAG + ": ★★★ 发现 ReplyElement ★★★");
+                                                            debugLog(TAG + ": ReplyElement class: " + replyElement.getClass().getName());
                                                             
                                                             // 打印 ReplyElement 的所有字段（用于分析引用回复结构）
                                                             for (Field replyField : replyElement.getClass().getDeclaredFields()) {
@@ -206,7 +234,7 @@ public class MessageSendTracker {
                                                                     String fieldType = replyField.getType().getSimpleName();
                                                                     String valStr = fieldVal != null ? fieldVal.toString() : "null";
                                                                     if (valStr.length() > 150) valStr = valStr.substring(0, 150) + "...";
-                                                                    //XposedBridge.log(TAG + ":   ReplyElement." + replyField.getName() + " (" + fieldType + "): " + valStr);
+                                                                    debugLog(TAG + ":   ReplyElement." + replyField.getName() + " (" + fieldType + "): " + valStr);
                                                                 } catch (Throwable ignored) {}
                                                             }
                                                             
@@ -251,7 +279,7 @@ public class MessageSendTracker {
                                                 null,
                                                 System.currentTimeMillis() - 1000  // 时间稍早
                                             );
-                                            //XposedBridge.log(TAG + ": ✓ 已将引用消息添加到上下文: " + replyContent.substring(0, Math.min(30, replyContent.length())));
+                                            debugLog(TAG + ": ✓ 已将引用消息添加到上下文: " + replyContent.substring(0, Math.min(30, replyContent.length())));
                                         }
                                         
                                         // 再添加自己发送的消息
@@ -264,23 +292,23 @@ public class MessageSendTracker {
                                                 null,
                                                 System.currentTimeMillis()
                                             );
-                                            //XposedBridge.log(TAG + ": ✓ 已将发送的消息添加到上下文: [" + peerUin + "] " + finalText);
+                                            debugLog(TAG + ": ✓ 已将发送的消息添加到上下文: [" + peerUin + "] " + finalText);
                                         }
                                     }
                                 } catch (Throwable t) {
-                                    XposedBridge.log(TAG + ": 提取发送消息失败: " + t.getMessage());
-                                    XposedBridge.log(t);
+                                    debugLog(TAG + ": 提取发送消息失败: " + t.getMessage());
+                                    debugLog(t);
                                 }
                             }
                         }
                     });
-                    //XposedBridge.log(TAG + ": Hook " + methodName + " 成功");
+                    debugLog(TAG + ": Hook " + methodName + " 成功");
                 } catch (Throwable t) {
-                    XposedBridge.log(TAG + ": Hook " + methodName + " 失败: " + t.getMessage());
+                    debugLog(TAG + ": Hook " + methodName + " 失败: " + t.getMessage());
                 }
             }
         } catch (Throwable t) {
-            XposedBridge.log(TAG + ": Hook AIOSendMsgVMDelegate失败: " + t.getMessage());
+            debugLog(TAG + ": Hook AIOSendMsgVMDelegate失败: " + t.getMessage());
         }
     }
     
@@ -289,7 +317,7 @@ public class MessageSendTracker {
      */
     private static void analyzeMsgDataObject(Object obj) {
         try {
-            //XposedBridge.log(TAG + ":   ┌─ 分析msg.data.a对象 ─┐");
+            debugLog(TAG + ":   ┌─ 分析msg.data.a对象 ─┐");
             
             Class<?> cls = obj.getClass();
             
@@ -305,28 +333,28 @@ public class MessageSendTracker {
                     if (value != null) {
                         String valStr = value.toString();
                         if (valStr.length() > 150) valStr = valStr.substring(0, 150) + "...";
-                        //XposedBridge.log(TAG + ":   │ " + fieldName + " (" + typeName + ") = " + valStr);
+                        debugLog(TAG + ":   │ " + fieldName + " (" + typeName + ") = " + valStr);
                         
                         // 如果是List，展开
                         if (value instanceof java.util.List) {
                             java.util.List<?> list = (java.util.List<?>) value;
-                            //XposedBridge.log(TAG + ":   │   List大小: " + list.size());
+                            debugLog(TAG + ":   │   List大小: " + list.size());
                             for (int i = 0; i < Math.min(3, list.size()); i++) {
                                 Object item = list.get(i);
                                 if (item != null) {
-                                    //XposedBridge.log(TAG + ":   │   [" + i + "] " + item.getClass().getSimpleName());
+                                    debugLog(TAG + ":   │   [" + i + "] " + item.getClass().getSimpleName());
                                 }
                             }
                         }
                     } else {
-                        //XposedBridge.log(TAG + ":   │ " + fieldName + " (" + typeName + ") = null");
+                        debugLog(TAG + ":   │ " + fieldName + " (" + typeName + ") = null");
                     }
                 } catch (Throwable ignored) {}
             }
             
-            //XposedBridge.log(TAG + ":   └─────────────────────┘");
+            debugLog(TAG + ":   └─────────────────────┘");
         } catch (Throwable t) {
-            XposedBridge.log(TAG + ":   分析失败: " + t.getMessage());
+            debugLog(TAG + ":   分析失败: " + t.getMessage());
         }
     }
 }
