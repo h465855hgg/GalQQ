@@ -4,14 +4,14 @@ plugins {
 
 android {
     namespace 'top.galqq'
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
         applicationId "top.galqq"
         minSdk 26
-        targetSdk 34
-        versionCode 104
-        versionName "1.0.4"
+        targetSdk 35
+        versionCode 106
+        versionName "1.0.6"
     }
 
     buildTypes {
@@ -21,8 +21,8 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 
     // 关键配置：使用自定义包ID 0x7e，避免与QQ的0x7f和QAuxiliary的0x39冲突
