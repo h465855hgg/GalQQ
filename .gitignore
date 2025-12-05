@@ -6,7 +6,6 @@ libs/*/build/
 
 # Local configuration file (sdk path, etc)
 local.properties
-gradle-app.setting
 
 # IDE files
 *.iml
@@ -15,7 +14,6 @@ gradle-app.setting
 *.swp
 *.swo
 *~
-.kiro/
 
 # Android Studio
 /.idea/caches
