@@ -14,10 +14,18 @@ public class SettingsUiFragmentHostActivity extends AppCompatTransferActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        if (HostInfo.isInHostProcess()) {
-            setTheme(R.style.Theme_GalQQ_DayNight);
-        }
+        // 应用主题管理器，检测QQ的夜间模式设置
+        top.galqq.utils.ThemeManager.applyTheme(this);
+        top.galqq.utils.ThemeManager.updateConfiguration(this);
+        
+        // 设置主题
+        setTheme(top.galqq.utils.ThemeManager.getThemeResId(this));
         super.onCreate(savedInstanceState);
+        
+        // 确保窗口背景色正确设置
+        getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+        int bgColor = resolveBackgroundColor();
+        getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(bgColor));
         setContentView(R.layout.activity_settings_host);
 
         Toolbar toolbar = findViewById(R.id.toolbar);
@@ -45,6 +53,30 @@ public class SettingsUiFragmentHostActivity extends AppCompatTransferActivity {
         requestTranslucentStatusBar();
     }
 
+    /**
+     * 解析当前主题的背景色
+     */
+    private int resolveBackgroundColor() {
+        android.util.TypedValue typedValue = new android.util.TypedValue();
+        // 尝试获取 android:windowBackground
+        if (getTheme().resolveAttribute(android.R.attr.windowBackground, typedValue, true)) {
+            if (typedValue.type >= android.util.TypedValue.TYPE_FIRST_COLOR_INT 
+                && typedValue.type <= android.util.TypedValue.TYPE_LAST_COLOR_INT) {
+                return typedValue.data;
+            }
+        }
+        // 尝试获取 android:colorBackground
+        if (getTheme().resolveAttribute(android.R.attr.colorBackground, typedValue, true)) {
+            if (typedValue.type >= android.util.TypedValue.TYPE_FIRST_COLOR_INT 
+                && typedValue.type <= android.util.TypedValue.TYPE_LAST_COLOR_INT) {
+                return typedValue.data;
+            }
+        }
+        // 降级：根据QQ夜间模式返回默认颜色
+        boolean isNightMode = top.galqq.utils.ThemeManager.isQQNightMode(this);
+        return isNightMode ? 0xFF202124 : 0xFFFFFFFF;
+    }
+
     protected void requestTranslucentStatusBar() {
         Window window = getWindow();
         window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
@@ -54,9 +86,8 @@ public class SettingsUiFragmentHostActivity extends AppCompatTransferActivity {
         View decorView = window.getDecorView();
         int option = View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
         
-        // 检测当前是否为深色模式
-        int uiMode = getResources().getConfiguration().uiMode;
-        boolean isNightMode = (uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+        // 检测QQ是否为深色模式
+        boolean isNightMode = top.galqq.utils.ThemeManager.isQQNightMode(this);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (!isNightMode) {

@@ -296,6 +296,40 @@ public class MessageInterceptor {
     
     private static void setupOptionBarContentWithRoot(Context context, LinearLayout bar, String msgContent, 
                                                Object msgObj, String msgId, String conversationId, ViewGroup rootView) {
+        // 【前置检查】提取senderQQ和peerUin，用于群聊过滤
+        String senderQQ = null;
+        String peerUin = null;
+        try {
+            Object senderUinObj = XposedHelpers.getObjectField(msgObj, "senderUin");
+            if (senderUinObj != null) {
+                senderQQ = String.valueOf(senderUinObj);
+            }
+            Object peerUinObj = XposedHelpers.getObjectField(msgObj, "peerUin");
+            if (peerUinObj != null) {
+                peerUin = String.valueOf(peerUinObj);
+            }
+        } catch (Throwable t) {
+            debugLog(TAG + ": Failed to extract sender/peer info for pre-check: " + t.getMessage());
+        }
+        
+        // 【群聊选项显示控制】在方法开头就检查，避免显示"加载中"后再隐藏
+        boolean isGroupChat = peerUin != null && senderQQ != null && !peerUin.equals(senderQQ);
+        if (isGroupChat) {
+            // 检查是否关闭群聊选项显示
+            if (ConfigManager.isDisableGroupOptions()) {
+                debugLog(TAG + ": [PRE-CHECK] Group options disabled, hiding option bar for group: " + peerUin);
+                bar.setVisibility(View.GONE);
+                return;
+            }
+            
+            // 检查群是否通过过滤（基于群黑白名单和群过滤模式）
+            if (!ConfigManager.isGroupPassFilter(peerUin)) {
+                debugLog(TAG + ": [PRE-CHECK] Group " + peerUin + " filtered out, hiding option bar");
+                bar.setVisibility(View.GONE);
+                return;
+            }
+        }
+        
         if (ConfigManager.isAiEnabled()) {
             // 添加加载指示器 (Loading Text)
             bar.removeAllViews();
@@ -387,10 +421,10 @@ public class MessageInterceptor {
                 AiRateLimitedQueue.Priority.HIGH : 
                 AiRateLimitedQueue.Priority.NORMAL;
             
-            // 【新增】提取当前消息的元数据（发送人昵称、时间戳和发送者QQ）
+            // 【新增】提取当前消息的元数据（发送人昵称、时间戳）
+            // 注意：senderQQ和peerUin已在方法开头提取
             String currentSenderName = null;
             long currentTimestamp = 0;
-            String senderQQ = null;
             try {
                 // 尝试从msgObj（msgRecord）提取senderName
                 Object remarkNameObj = XposedHelpers.getObjectField(msgObj, "sendRemarkName");
@@ -408,21 +442,16 @@ public class MessageInterceptor {
                 if (msgTimeObj != null) {
                     currentTimestamp = Long.parseLong(String.valueOf(msgTimeObj)) * 1000L; // 秒转毫秒
                 }
-                
-                // 提取发送者QQ号（用于黑白名单过滤）
-                Object senderUinObj = XposedHelpers.getObjectField(msgObj, "senderUin");
-                if (senderUinObj != null) {
-                    senderQQ = String.valueOf(senderUinObj);
-                }
             } catch (Throwable t) {
                 // 提取失败，使用默认值（null和0）
                 debugLog(TAG + ": Failed to extract current message metadata: " + t.getMessage());
             }
             
-            // 使用 PromptSelector 选择合适的提示词
+            // 使用 PromptSelector 选择合适的提示词（传递peerUin作为groupId）
+            // 注意：peerUin和senderQQ已在方法开头提取
             java.util.List<ConfigManager.PromptItem> allPrompts = ConfigManager.getPromptList();
             ConfigManager.PromptItem selectedPrompt = top.galqq.utils.PromptSelector.getSelectedPrompt(
-                allPrompts, senderQQ, ConfigManager.isAiEnabled());
+                allPrompts, senderQQ, peerUin, ConfigManager.isAiEnabled());
             
             // 如果没有可用的提示词（全部被屏蔽），隐藏选项栏
             if (selectedPrompt == null) {
@@ -1517,6 +1546,7 @@ public class MessageInterceptor {
                 try {
                     Object peerUinObj = XposedHelpers.getObjectField(msgRecord, "peerUin");
                     peerUin = String.valueOf(peerUinObj);
+                    debugLog(TAG + ": [Affinity] peerUin=" + peerUin + ", senderUin=" + senderUin);
                 } catch (Throwable t) {
                     debugLog(TAG + ": Failed to get peerUin: " + t.getMessage());
                 }
@@ -1693,8 +1723,12 @@ public class MessageInterceptor {
                             // 创建好感度视图
                             TextView affinityView = top.galqq.utils.AffinityViewHelper.createAffinityView(context, affinity);
                             
-                            // 添加到布局
-                            addAffinityViewToLayout(context, rootView, affinityView, msgRecord);
+                            // 判断是否是私聊：peerUin == senderUin 时为私聊
+                            boolean isPrivateChat = (peerUin != null && peerUin.equals(finalSenderUin));
+                            debugLog(TAG + ": [Affinity] isPrivateChat=" + isPrivateChat + ", peerUin=" + peerUin + ", senderUin=" + finalSenderUin);
+                            
+                            // 添加到布局（传递私聊标志以调整位置）
+                            addAffinityViewToLayout(context, rootView, affinityView, msgRecord, isPrivateChat);
                         }
                     } catch (Throwable t) {
                         debugLog(TAG + ": [Affinity] Error: " + t.getMessage());
@@ -1721,6 +1755,22 @@ public class MessageInterceptor {
                 boolean autoShow = ConfigManager.isAutoShowOptionsEnabled();
                 // 确保 conversationId 在作用域内
                 String conversationId = (peerUin != null && !peerUin.isEmpty()) ? peerUin : senderUin;
+
+                // 【群聊选项显示控制】在创建任何UI元素之前检查
+                // 判断是否为群聊：peerUin != senderUin 时为群聊
+                boolean isGroupChatForFilter = peerUin != null && senderUin != null && !peerUin.equals(senderUin);
+                if (isGroupChatForFilter) {
+                    // 检查是否关闭群聊选项显示
+                    if (ConfigManager.isDisableGroupOptions()) {
+                        debugLog(TAG + ": [GROUP_FILTER] Group options disabled, skipping all UI for group: " + peerUin);
+                        return; // 直接返回，不创建任何UI元素
+                    }
+                    // 检查群是否通过过滤（基于群黑白名单和群过滤模式）
+                    if (!ConfigManager.isGroupPassFilter(peerUin)) {
+                        debugLog(TAG + ": [GROUP_FILTER] Group " + peerUin + " filtered out, skipping all UI");
+                        return; // 直接返回，不创建任何UI元素
+                    }
+                }
 
                 // 检查是否用户手动点击过显示
                 boolean hasRequested = (msgId != null && requestedOptionsMsgIds.contains(msgId));
@@ -1833,8 +1883,10 @@ public class MessageInterceptor {
      * 添加好感度视图到布局
      * 使用与选项条完全相同的方式：找到消息气泡，定位到气泡上方
      * 不使用任何降级逻辑，只支持 ConstraintLayout
+     * 
+     * @param isPrivateChat 是否是私聊（私聊时需要调整位置，因为没有昵称显示）
      */
-    private static void addAffinityViewToLayout(Context context, ViewGroup rootView, View affinityView, Object msgRecord) {
+    private static void addAffinityViewToLayout(Context context, ViewGroup rootView, View affinityView, Object msgRecord, boolean isPrivateChat) {
         try {
             // 1. 添加视图到 ConstraintLayout（与选项条相同）
             Class<?> constraintLayoutParamsClass = XposedHelpers.findClass(
@@ -1910,8 +1962,13 @@ public class MessageInterceptor {
             // 约束常量: TOP=3, BOTTOM=4, LEFT=1, RIGHT=2, START=6, END=7
             int TOP = 3, BOTTOM = 4, LEFT = 1;
             
-            // 底部连接到气泡顶部，增加间距使其更靠上（8dp）
-            XposedHelpers.callMethod(constraintSet, "connect", viewId, BOTTOM, msgBubbleId, TOP, dp2px(context, 8));
+            // 【私聊/群聊位置调整】
+            // 群聊时：气泡上方有昵称，需要更大的间距（8dp）
+            // 私聊时：气泡上方没有昵称，使用负间距让好感度更靠近气泡（-4dp）
+            int bottomMargin = isPrivateChat ? dp2px(context, -16) : dp2px(context, 8);
+            
+            // 底部连接到气泡顶部
+            XposedHelpers.callMethod(constraintSet, "connect", viewId, BOTTOM, msgBubbleId, TOP, bottomMargin);
             // 左侧对齐父容器左边，留4dp间距（显示在头像上方位置）
             XposedHelpers.callMethod(constraintSet, "connect", viewId, LEFT, parentId, LEFT, dp2px(context, 4));
             

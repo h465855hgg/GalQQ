@@ -25,26 +25,44 @@ public class PromptSelector {
     }
     
     /**
-     * 计算单个提示词对指定QQ的状态
+     * 计算单个提示词对指定QQ和群的状态
+     * 
+     * 优先级决策链（从高到低）：
+     * 1. 提示词禁用 -> FORCE_OFF
+     * 2. 用户白名单 -> FORCE_ON
+     * 3. 群白名单 -> FORCE_ON
+     * 4. 用户黑名单 -> FORCE_OFF
+     * 5. 群黑名单 -> FORCE_OFF
+     * 6. 默认状态 -> 根据aiEnabled返回DEFAULT或FORCE_OFF
+     * 
      * @param prompt 提示词
      * @param senderQQ 发送者QQ号
+     * @param groupId 群号（私聊时为null或对方QQ号）
      * @param aiEnabled AI是否启用
      * @return 提示词状态
      */
-    public static PromptStatus calculateStatus(PromptItem prompt, String senderQQ, boolean aiEnabled) {
-        // 如果提示词被禁用，直接返回 FORCE_OFF（黑白名单都不触发）
+    public static PromptStatus calculateStatus(PromptItem prompt, String senderQQ, String groupId, boolean aiEnabled) {
+        // 1. 如果提示词被禁用，直接返回 FORCE_OFF（黑白名单都不触发）
         if (!prompt.enabled) {
             return PromptStatus.FORCE_OFF;
         }
-        // 白名单优先
+        // 2. 用户白名单（最高优先级）
         if (prompt.isInWhitelist(senderQQ)) {
             return PromptStatus.FORCE_ON;
         }
-        // 黑名单次之
+        // 3. 群白名单
+        if (prompt.isInGroupWhitelist(groupId)) {
+            return PromptStatus.FORCE_ON;
+        }
+        // 4. 用户黑名单
         if (prompt.isInBlacklist(senderQQ)) {
             return PromptStatus.FORCE_OFF;
         }
-        // 默认状态取决于AI是否启用
+        // 5. 群黑名单
+        if (prompt.isInGroupBlacklist(groupId)) {
+            return PromptStatus.FORCE_OFF;
+        }
+        // 6. 默认状态取决于AI是否启用
         return aiEnabled ? PromptStatus.DEFAULT : PromptStatus.FORCE_OFF;
     }
     
@@ -52,10 +70,11 @@ public class PromptSelector {
      * 选择适用的提示词列表
      * @param allPrompts 所有提示词
      * @param senderQQ 发送者QQ号
+     * @param groupId 群号（私聊时为null或对方QQ号）
      * @param aiEnabled AI是否启用
      * @return 空列表表示全部被屏蔽，单元素表示白名单命中，多元素表示默认选择
      */
-    public static List<PromptItem> selectPrompts(List<PromptItem> allPrompts, String senderQQ, boolean aiEnabled) {
+    public static List<PromptItem> selectPrompts(List<PromptItem> allPrompts, String senderQQ, String groupId, boolean aiEnabled) {
         if (allPrompts == null || allPrompts.isEmpty()) {
             return Collections.emptyList();
         }
@@ -67,10 +86,10 @@ public class PromptSelector {
         boolean verboseLog = ConfigManager.isVerboseLogEnabled();
         
         for (PromptItem prompt : allPrompts) {
-            PromptStatus status = calculateStatus(prompt, senderQQ, aiEnabled);
+            PromptStatus status = calculateStatus(prompt, senderQQ, groupId, aiEnabled);
             
             if (verboseLog) {
-                debugLog(TAG + ": [" + prompt.name + "] status=" + status.name() + " for QQ: " + senderQQ);
+                debugLog(TAG + ": [" + prompt.name + "] status=" + status.name() + " for QQ: " + senderQQ + ", Group: " + groupId);
             }
             
             if (status == PromptStatus.FORCE_ON) {
@@ -86,17 +105,17 @@ public class PromptSelector {
         if (!forceOnPrompts.isEmpty()) {
             // 返回最高优先级的白名单提示词（第一个）
             PromptItem selected = forceOnPrompts.get(0);
-            debugLog(TAG + ": 白名单命中: " + selected.name + " for QQ: " + senderQQ);
+            debugLog(TAG + ": 白名单命中: " + selected.name + " for QQ: " + senderQQ + ", Group: " + groupId);
             return Collections.singletonList(selected);
         }
         
         if (!defaultPrompts.isEmpty()) {
-            debugLog(TAG + ": 使用默认提示词列表 for QQ: " + senderQQ);
+            debugLog(TAG + ": 使用默认提示词列表 for QQ: " + senderQQ + ", Group: " + groupId);
             return defaultPrompts;
         }
         
         // 全部被屏蔽
-        debugLog(TAG + ": 所有提示词被黑名单屏蔽 for QQ: " + senderQQ);
+        debugLog(TAG + ": 所有提示词被黑名单屏蔽 for QQ: " + senderQQ + ", Group: " + groupId);
         return Collections.emptyList();
     }
     
@@ -108,11 +127,12 @@ public class PromptSelector {
      * 
      * @param allPrompts 所有提示词
      * @param senderQQ 发送者QQ号
+     * @param groupId 群号（私聊时为null或对方QQ号）
      * @param aiEnabled AI是否启用
      * @return 选中的提示词，如果全部被屏蔽则返回null
      */
-    public static PromptItem getSelectedPrompt(List<PromptItem> allPrompts, String senderQQ, boolean aiEnabled) {
-        List<PromptItem> selected = selectPrompts(allPrompts, senderQQ, aiEnabled);
+    public static PromptItem getSelectedPrompt(List<PromptItem> allPrompts, String senderQQ, String groupId, boolean aiEnabled) {
+        List<PromptItem> selected = selectPrompts(allPrompts, senderQQ, groupId, aiEnabled);
         if (selected.isEmpty()) {
             return null;
         }

@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.GalQQ.DayNight" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <!-- Dark theme background colors -->
-        <item name="android:windowBackground">#FF202124</item>
-        <item name="backgroundColor">#FF202124</item>
+        <!-- Dark theme background colors - 使用明确的颜色值确保可见性 -->
+        <item name="android:windowBackground">@color/galqq_background_dark</item>
+        <item name="android:colorBackground">@color/galqq_background_dark</item>
+        <item name="backgroundColor">@color/galqq_background_dark</item>
         
         <!-- Primary colors -->
         <item name="colorPrimary">#FF82A8E7</item>
@@ -17,8 +18,12 @@
         <item name="colorSecondaryVariant">#FF82A8E7</item>
         <item name="colorOnSecondary">@android:color/white</item>
         
+        <!-- Surface colors (用于卡片、对话框等) -->
+        <item name="colorSurface">@color/galqq_background_dark</item>
+        <item name="colorOnSurface">#FFFFFFFF</item>
+        
         <!-- Status bar -->
-        <item name="android:statusBarColor">#FF202124</item>
+        <item name="android:statusBarColor">@color/galqq_background_dark</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
         <item name="android:windowTranslucentStatus">false</item>
         <item name="android:windowLightStatusBar">false</item>
@@ -32,5 +37,8 @@
         <item name="android:textColorPrimary">#FFFFFFFF</item>
         <item name="android:textColorSecondary">#FFBDC1C6</item>
         <item name="colorControlNormal">#FFFFFFFF</item>
+        
+        <!-- Preference 相关样式 -->
+        <item name="preferenceTheme">@style/PreferenceThemeOverlay.v14.Material</item>
     </style>
 </resources>

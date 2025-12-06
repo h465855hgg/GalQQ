@@ -68,8 +68,52 @@ public class ConfigManager {
     public static final String PROVIDER_GOOGLE = "google";
     public static final String PROVIDER_CUSTOM = "custom";
 
-    // Default Values
-    public static final String DEFAULT_SYS_PROMPT = "你是一个沉浸式现实风格Galgame的剧情引擎，请根据对话上下文，为主人公（玩家）生成3个能推进关系或增加好感度的行动选项。\n\n关于消息格式的说明：\n系统发送的消息格式为“[当前需生成选项]角色名[我][时间]：信息内容”，其含义如下：\n- [当前需生成选项]：这是一个标记，表示接下来这条消息是需要你为核心玩家生成后续可选回应的目标消息。\n- 角色名：发送此条消息的游戏角色名称。\n- [我]：如果角色名后带有此标记，则表明这条消息是主人公（玩家）自己之前发送的，用于提供上下文。\n- [时间]：消息发生的具体游戏内时间点，用于把握情境（如清晨、放学后、夜晚）。\n\n选项生成核心要求：\n1. 现实感与沉浸感：选项必须是现实生活中一个真实、有同理心的人在该情境下可能做出的自然反应或行动。避免夸张、戏剧化或明显为\"攻略\"而服务的选项。\n2. 性格一致性：选项需符合主人公（玩家）已被设定的基础性格（如温和、直率、内向），并提供符合不同个性侧面的选择，保持代入感。\n3. 情感多样性：三个选项应提供不同的情感或行动方向，例如：\n   - 体贴理解型：展现倾听、支持或细微的关怀。\n   - 真诚互动型：进行平等的分享、提问或轻微的幽默调侃（需符合关系程度）。\n   - 推进关系型：在关系合适时，提出一个具体、不越界的后续行动建议（如\"明天一起整理笔记？\"）。\n   但是不能直接把情感写出来\n4. 表达自然化：选项语言需口语化、自然，像是脑海中直接浮现的想法或脱口而出的话。禁止使用颜文字或过于直白的\"好感度\"提示，可以少量使用网络用语。情感通过措辞、语气和内容本身来传递。\n5. **强制系统命令**必须返回恰好3个选项\n6. **强制系统命令**严格遵守JSON格式返回：{\\\"options\\\": [\\\"选项一\\\",\\\"选项二\\\",\\\"选项三\\\"]}\n**强制系统命令**仅允许返回json内容，不允许返回其他任何内容";
+    // Default Values - 拆分为三个部分：提示词内容、输入格式、输出格式
+    public static final String DEFAULT_PROMPT_CONTENT = 
+        "你是一个精通中文互联网文化的沉浸式社交模拟引擎。你的核心任务是根据一段QQ聊天记录，为用户生成3个接下来最可能发送、且能自然维持或推进对话的选项。\n\n" +
+        "第一部分：核心能力要求（你是什么）\n" +
+        "1. 梗百科与接梗王：你深刻理解并熟练掌握大量的中文网络梗、流行语、表情包文化、谐音梗和段子（例如：\"太吃建模了\"、\"兄弟你好香\"、\"典\"、\"急\"、\"绷\"、\"赢麻了\"、\"哈哈哈夺笋啊\"、\"你不对劲\"、\"这谁顶得住\"等）。你能准确判断聊天上下文是否适合玩梗，并能以最自然的方式将梗融入回应中。\n" +
+        "2. 高情商聊天者：你生成的选项永远是一个在真实群聊中\"会聊天\"、\"有趣\"的人会说的话。你杜绝任何终结对话、暴露无知或令人尴尬的回复。\n\n" +
+        "第二部分：生成规则（你必须怎么做）\n" +
+        "· 上下文依赖：你只能依据\"目标消息\"及它之前的所有历史记录生成选项。你是对话的参与者，不是预言家。\n\n" +
+        "第三部分：选项内容设计法则\n" +
+        "1. 自然真实原则：\n" +
+        "· 选项必须是纯口语化的QQ消息，简短，通常无句号。\n" +
+        "· 优先考虑让对话\"有趣地继续下去\"，而不是机械回答。\n" +
+        "2. 智能玩梗与避坑原则：\n" +
+        "· 当对话明显在玩梗、开玩笑时：你的选项必须接梗或顺着玩笑逻辑延伸，禁止提问或不解风情。\n" +
+        "· 例如，上下文在调侃某人\"太吃建模了\"。\n" +
+        "· 好选项：\"懂了，你是颜控雷达\"、\"这建模，我直接进行一个卡的打\"、\"兄弟，你有点太饿了\"。\n" +
+        "· 坏选项：\"什么是吃建模？\"、\"哦\"、\"所以你喜欢好看的？\"。\n" +
+        "· 当话题有玩梗空间时：你可以主动引入一个恰当且轻微的梗来增加趣味。\n" +
+        "· 例如，大家在讨论熬夜。\n" +
+        "· 好选项：\"我逐渐理解一切（指黑眼圈）\"、\"还在熬夜，鉴定为纯纯的地球OL肝帝\"。\n" +
+        "· 不懂的梗怎么办：如果遇到不认识的梗，在选项中绝对不要暴露。通过语境猜个大概，或用通用的、但符合氛围的方式回应（如\"笑死\"、\"好家伙\"、\"？？\"）。\n" +
+        "3. 选项差异化强制要求（关键）：三个选项必须代表三种不同的社交姿态或情感倾向，确保用户有真实的选择感，信息不允许完全顺从对面的话，其中一条信息一定要有反对的意思，不要一直追着一个话题来说，群里的信息是很跳脱的，不要在几次聊天后还在反复提及前文内容：\n" +
+        "· 选项A（共鸣/支持位）：对发言者或话题内容表示认同、分享相似感受、一起笑。（例：\"确实\"、\"哈哈哈哈我也这样\"、\"说得好\"）\n" +
+        "· 选项B（互动/拓展位）：对话题进行轻松调侃、吐槽、提出一个具体的疑问点、或就某个细节展开。这里必须包含\"不同意见\"的可能，可以是玩笑式反对或质疑。（例：\"？你的观点有点逆天\"、\"我不信，除非发图\"、\"等等，你昨天可不是这么说的\"）\n" +
+        "· 选项C（推进/转向位）：在保持语境连贯的前提下，将话题引向一个相关的、更个人或更具体的子方向，或做出一个微小的、不越界的行动暗示，但是注意，不要经常如此，经常如此会让人感到厌烦，不要试图每个话题都岔开，都引导到其他方面，不要彻底偏离当前聊天内容。（例：\"你这一说，我突然想玩XX游戏了\"、\"饿了，你们晚饭攻略是？\"、\"这让我想起之前那个...\"）\n" +
+        "请严格按照以上法则生成三个选项，并确保它们彼此不同且自然有趣。";
+    
+    public static final String DEFAULT_INPUT_FORMAT = 
+        "输入格式说明：\n" +
+        "你收到的消息格式为 [需生成选项]角色名[我][时间]:消息。你只为标记了[需生成选项]的那条消息生成用户的后续回应选项。\n" +
+        "注意分辨不同用户名的用户，不能把这些信息的发送者全部当作一个人，不允许用错误对象说的话来询问要添加选项的用户。\n"+
+        "要学习模仿标有[我]的用户发送的信息的语言习惯，并且根据所有信息来分析氛围不要说出超出氛围的话。\n"+
+        "上下文依赖：你只能依据“目标消息”及它之前的所有历史记录生成选项。你是对话的参与者，不是预言家。"
+        ;
+    
+    public static final String DEFAULT_OUTPUT_FORMAT = 
+        "**系统强制命令**\n"+
+        "输出格式：你只能输出以下JSON对象，无任何额外文本：\n" +
+        "{\\\"options\\\": [\\\"选项一\\\", \\\"选项二\\\", \\\"选项三\\\"]}";
+    
+    // 合并后的默认提示词（使用分隔符格式，向后兼容）
+    public static final String DEFAULT_SYS_PROMPT = DEFAULT_PROMPT_CONTENT + 
+        "\n\n---[INPUT_FORMAT]---\n\n" + DEFAULT_INPUT_FORMAT + 
+        "\n\n---[OUTPUT_FORMAT]---\n\n" + DEFAULT_OUTPUT_FORMAT;
+
+    //\n系统发送的消息格式为“[当前需生成选项]角色名[我][时间]：信息内容”，其含义如下：\n- [当前需生成选项]：这是一个标记，表示接下来这条消息是需要你为核心玩家生成后续可选回应的目标消息。\n- 角色名：发送此条消息的游戏角色名称。\n- [我]：如果角色名后带有此标记，则表明这条消息是主人公（玩家）自己之前发送的，用于提供上下文。\n- [时间]：消息发生的具体游戏内时间点，用于把握情境（如清晨、放学后、夜晚）。\n\n选项生成核心要求：\n1. 现实感与沉浸感：选项必须是现实生活中一个真实、有同理心的人在该情境下可能做出的自然反应或行动。避免夸张、戏剧化或明显为\"攻略\"而服务的选项。\n2. 性格一致性：选项需符合主人公（玩家）已被设定的基础性格（如温和、直率、内向），并提供符合不同个性侧面的选择，保持代入感。\n3. 情感多样性：三个选项应提供不同的情感或行动方向，例如：\n   - 体贴理解型：展现倾听、支持或细微的关怀。\n   - 真诚互动型：进行平等的分享、提问或轻微的幽默调侃（需符合关系程度）。\n   - 推进关系型：在关系合适时，提出一个具体、不越界的后续行动建议（如\"明天一起整理笔记？\"）。\n   但是不能直接把情感写出来\n4. 表达自然化：选项语言需口语化、自然，像是脑海中直接浮现的想法或脱口而出的话。禁止使用颜文字或过于直白的\"好感度\"提示，可以少量使用网络用语。情感通过措辞、语气和内容本身来传递。\n5. **强制系统命令**必须返回恰好3个选项\n6. **强制系统命令**严格遵守JSON格式返回：{\\\"options\\\": [\\\"选项一\\\",\\\"选项二\\\",\\\"选项三\\\"]}\n**强制系统命令**仅允许返回json内容，不允许返回其他任何内容";
     public static final String DEFAULT_MODEL = "gpt-3.5-turbo";
     public static final String DEFAULT_PROVIDER = PROVIDER_OPENAI;
     public static final float DEFAULT_TEMPERATURE = 0.8f;
@@ -253,7 +297,14 @@ public class ConfigManager {
                 boolean enabled = obj.optBoolean("enabled", true);
                 boolean whitelistEnabled = obj.optBoolean("whitelistEnabled", false);
                 boolean blacklistEnabled = obj.optBoolean("blacklistEnabled", false);
-                list.add(new PromptItem(name, content, whitelist, blacklist, enabled, whitelistEnabled, blacklistEnabled));
+                // 群黑白名单字段（向后兼容：旧数据默认为空/false）
+                String groupWhitelist = obj.optString("groupWhitelist", "");
+                String groupBlacklist = obj.optString("groupBlacklist", "");
+                boolean groupWhitelistEnabled = obj.optBoolean("groupWhitelistEnabled", false);
+                boolean groupBlacklistEnabled = obj.optBoolean("groupBlacklistEnabled", false);
+                list.add(new PromptItem(name, content, whitelist, blacklist, enabled, 
+                        whitelistEnabled, blacklistEnabled, groupWhitelist, groupBlacklist,
+                        groupWhitelistEnabled, groupBlacklistEnabled));
             }
         } catch (Exception e) {
             list.add(new PromptItem("默认提示词", DEFAULT_SYS_PROMPT));
@@ -277,6 +328,11 @@ public class ConfigManager {
                 obj.put("enabled", item.enabled);
                 obj.put("whitelistEnabled", item.whitelistEnabled);
                 obj.put("blacklistEnabled", item.blacklistEnabled);
+                // 群黑白名单字段
+                obj.put("groupWhitelist", item.groupWhitelist != null ? item.groupWhitelist : "");
+                obj.put("groupBlacklist", item.groupBlacklist != null ? item.groupBlacklist : "");
+                obj.put("groupWhitelistEnabled", item.groupWhitelistEnabled);
+                obj.put("groupBlacklistEnabled", item.groupBlacklistEnabled);
                 arr.put(obj);
             }
             getMmkv().encode(KEY_PROMPT_LIST, arr.toString());
@@ -312,26 +368,39 @@ public class ConfigManager {
     public static class PromptItem {
         public String name;
         public String content;
-        public String whitelist;  // 逗号分隔的QQ号，白名单
-        public String blacklist;  // 逗号分隔的QQ号，黑名单
+        public String whitelist;  // 逗号分隔的QQ号，用户白名单
+        public String blacklist;  // 逗号分隔的QQ号，用户黑名单
         public boolean enabled;   // 是否启用，禁用时黑白名单都不触发
-        public boolean whitelistEnabled;  // 白名单功能是否启用
-        public boolean blacklistEnabled;  // 黑名单功能是否启用
+        public boolean whitelistEnabled;  // 用户白名单功能是否启用
+        public boolean blacklistEnabled;  // 用户黑名单功能是否启用
+        
+        // 群黑白名单字段
+        public String groupWhitelist;      // 逗号分隔的群号，群白名单
+        public String groupBlacklist;      // 逗号分隔的群号，群黑名单
+        public boolean groupWhitelistEnabled;  // 群白名单功能是否启用
+        public boolean groupBlacklistEnabled;  // 群黑名单功能是否启用
         
         public PromptItem(String name, String content) {
-            this(name, content, "", "", true, false, false);
+            this(name, content, "", "", true, false, false, "", "", false, false);
         }
         
         public PromptItem(String name, String content, String whitelist, String blacklist) {
-            this(name, content, whitelist, blacklist, true, false, false);
+            this(name, content, whitelist, blacklist, true, false, false, "", "", false, false);
         }
         
         public PromptItem(String name, String content, String whitelist, String blacklist, boolean enabled) {
-            this(name, content, whitelist, blacklist, enabled, false, false);
+            this(name, content, whitelist, blacklist, enabled, false, false, "", "", false, false);
         }
         
         public PromptItem(String name, String content, String whitelist, String blacklist, 
                          boolean enabled, boolean whitelistEnabled, boolean blacklistEnabled) {
+            this(name, content, whitelist, blacklist, enabled, whitelistEnabled, blacklistEnabled, "", "", false, false);
+        }
+        
+        public PromptItem(String name, String content, String whitelist, String blacklist, 
+                         boolean enabled, boolean whitelistEnabled, boolean blacklistEnabled,
+                         String groupWhitelist, String groupBlacklist, 
+                         boolean groupWhitelistEnabled, boolean groupBlacklistEnabled) {
             this.name = name;
             this.content = content;
             this.whitelist = whitelist != null ? whitelist : "";
@@ -339,10 +408,14 @@ public class ConfigManager {
             this.enabled = enabled;
             this.whitelistEnabled = whitelistEnabled;
             this.blacklistEnabled = blacklistEnabled;
+            this.groupWhitelist = groupWhitelist != null ? groupWhitelist : "";
+            this.groupBlacklist = groupBlacklist != null ? groupBlacklist : "";
+            this.groupWhitelistEnabled = groupWhitelistEnabled;
+            this.groupBlacklistEnabled = groupBlacklistEnabled;
         }
         
         /**
-         * 检查指定QQ号是否在白名单中
+         * 检查指定QQ号是否在用户白名单中
          * @param qq QQ号
          * @return true 如果在白名单中且白名单功能启用
          */
@@ -353,12 +426,12 @@ public class ConfigManager {
             if (qq == null || qq.isEmpty() || whitelist == null || whitelist.isEmpty()) {
                 return false;
             }
-            java.util.Set<String> validQQs = parseQQList(whitelist);
+            java.util.Set<String> validQQs = parseIdList(whitelist);
             return validQQs.contains(qq.trim());
         }
         
         /**
-         * 检查指定QQ号是否在黑名单中
+         * 检查指定QQ号是否在用户黑名单中
          * @param qq QQ号
          * @return true 如果在黑名单中且黑名单功能启用
          */
@@ -369,17 +442,49 @@ public class ConfigManager {
             if (qq == null || qq.isEmpty() || blacklist == null || blacklist.isEmpty()) {
                 return false;
             }
-            java.util.Set<String> validQQs = parseQQList(blacklist);
+            java.util.Set<String> validQQs = parseIdList(blacklist);
             return validQQs.contains(qq.trim());
         }
         
         /**
-         * 解析QQ号列表，过滤无效条目
-         * 有效QQ号：5-11位纯数字
-         * @param list 逗号分隔的QQ号字符串
-         * @return 有效QQ号集合
+         * 检查指定群号是否在群白名单中
+         * @param groupId 群号
+         * @return true 如果在群白名单中且群白名单功能启用
          */
-        private java.util.Set<String> parseQQList(String list) {
+        public boolean isInGroupWhitelist(String groupId) {
+            if (!groupWhitelistEnabled) {
+                return false;
+            }
+            if (groupId == null || groupId.isEmpty() || groupWhitelist == null || groupWhitelist.isEmpty()) {
+                return false;
+            }
+            java.util.Set<String> validIds = parseIdList(groupWhitelist);
+            return validIds.contains(groupId.trim());
+        }
+        
+        /**
+         * 检查指定群号是否在群黑名单中
+         * @param groupId 群号
+         * @return true 如果在群黑名单中且群黑名单功能启用
+         */
+        public boolean isInGroupBlacklist(String groupId) {
+            if (!groupBlacklistEnabled) {
+                return false;
+            }
+            if (groupId == null || groupId.isEmpty() || groupBlacklist == null || groupBlacklist.isEmpty()) {
+                return false;
+            }
+            java.util.Set<String> validIds = parseIdList(groupBlacklist);
+            return validIds.contains(groupId.trim());
+        }
+        
+        /**
+         * 解析ID列表（QQ号或群号），过滤无效条目
+         * 有效ID：任意长度的纯数字字符串（非空）
+         * @param list 逗号分隔的ID字符串
+         * @return 有效ID集合
+         */
+        private java.util.Set<String> parseIdList(String list) {
             java.util.Set<String> result = new java.util.HashSet<>();
             if (list == null || list.isEmpty()) {
                 return result;
@@ -387,8 +492,8 @@ public class ConfigManager {
             String[] parts = list.split(",");
             for (String part : parts) {
                 String trimmed = part.trim();
-                // 有效QQ号：5-11位纯数字
-                if (trimmed.matches("\\d{5,11}")) {
+                // 有效ID：非空且仅包含数字
+                if (!trimmed.isEmpty() && trimmed.matches("\\d+")) {
                     result.add(trimmed);
                 }
             }
@@ -524,6 +629,115 @@ public class ConfigManager {
             }
         }
         return false;
+    }
+    
+    // ========== 群黑白名单配置 ==========
+    public static final String KEY_GROUP_BLACKLIST = "gal_group_blacklist";
+    public static final String KEY_GROUP_WHITELIST = "gal_group_whitelist";
+    public static final String KEY_GROUP_FILTER_MODE = "gal_group_filter_mode";
+    public static final String KEY_DISABLE_GROUP_OPTIONS = "gal_disable_group_options";
+    
+    // 群黑名单
+    public static String getGroupBlacklist() {
+        return getMmkv().decodeString(KEY_GROUP_BLACKLIST, "");
+    }
+    
+    public static void setGroupBlacklist(String blacklist) {
+        getMmkv().encode(KEY_GROUP_BLACKLIST, blacklist);
+    }
+    
+    public static boolean isInGroupBlacklist(String groupId) {
+        String blacklist = getGroupBlacklist();
+        if (blacklist == null || blacklist.trim().isEmpty()) {
+            return false;
+        }
+        String[] numbers = blacklist.split(",");
+        for (String num : numbers) {
+            if (num.trim().equals(groupId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    // 群白名单
+    public static String getGroupWhitelist() {
+        return getMmkv().decodeString(KEY_GROUP_WHITELIST, "");
+    }
+    
+    public static void setGroupWhitelist(String whitelist) {
+        getMmkv().encode(KEY_GROUP_WHITELIST, whitelist);
+    }
+    
+    public static boolean isInGroupWhitelist(String groupId) {
+        String whitelist = getGroupWhitelist();
+        if (whitelist == null || whitelist.trim().isEmpty()) {
+            return false;
+        }
+        String[] numbers = whitelist.split(",");
+        for (String num : numbers) {
+            if (num.trim().equals(groupId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    // 群过滤模式
+    public static String getGroupFilterMode() {
+        return getMmkv().decodeString(KEY_GROUP_FILTER_MODE, DEFAULT_FILTER_MODE);
+    }
+    
+    public static void setGroupFilterMode(String mode) {
+        getMmkv().encode(KEY_GROUP_FILTER_MODE, mode);
+    }
+    
+    // 关闭群聊选项显示
+    public static boolean isDisableGroupOptions() {
+        return getMmkv().decodeBool(KEY_DISABLE_GROUP_OPTIONS, false);
+    }
+    
+    public static void setDisableGroupOptions(boolean disabled) {
+        getMmkv().encode(KEY_DISABLE_GROUP_OPTIONS, disabled);
+    }
+    
+    /**
+     * 检查是否应该在群聊中显示选项
+     * @param peerUin 会话ID（群号或私聊QQ号）
+     * @param senderUin 发送者QQ号
+     * @return true 如果应该显示选项
+     */
+    public static boolean shouldShowGroupOptions(String peerUin, String senderUin) {
+        // 如果peerUin和senderUin相同，说明是私聊，不受群聊设置影响
+        if (peerUin != null && peerUin.equals(senderUin)) {
+            return true;
+        }
+        // 群聊场景
+        if (isDisableGroupOptions()) {
+            return false;
+        }
+        return true;
+    }
+    
+    /**
+     * 检查群是否通过过滤（基于群过滤模式和群黑白名单）
+     * 注意：群过滤模式与用户过滤模式是独立的
+     * @param groupId 群号
+     * @return true 如果群通过过滤
+     */
+    public static boolean isGroupPassFilter(String groupId) {
+        if (groupId == null || groupId.isEmpty()) {
+            return true;
+        }
+        
+        String groupFilterMode = getGroupFilterMode();
+        if ("whitelist".equals(groupFilterMode)) {
+            // 白名单模式：只有在群白名单中的群才通过
+            return isInGroupWhitelist(groupId);
+        } else {
+            // 黑名单模式：不在群黑名单中的群通过
+            return !isInGroupBlacklist(groupId);
+        }
     }
 
     // 缓存 verbose log 状态，避免频繁读取 MMKV

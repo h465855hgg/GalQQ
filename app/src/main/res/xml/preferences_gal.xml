@@ -32,11 +32,10 @@
             android:inputType="textPassword"
             android:defaultValue="" />
         
-        <EditTextPreference
+        <Preference
             android:key="gal_ai_model"
             android:title="@string/gal_ai_model_title"
-            android:summary="@string/gal_ai_model_summary"
-            android:defaultValue="gpt-3.5-turbo" />
+            android:summary="点击选择或自定义模型" />
         
         <ListPreference
             android:key="gal_ai_provider"
@@ -183,18 +182,38 @@
             android:entries="@array/filter_mode_names"
             android:entryValues="@array/filter_mode_values"
             android:defaultValue="blacklist"
-            android:summary="选择黑名单或白名单模式" />
+            android:summary="选择用户黑名单或用户白名单模式" />
         
         <EditTextPreference
             android:key="gal_blacklist"
-            android:title="黑名单"
+            android:title="用户黑名单"
             android:summary="不显示选项条的QQ号（逗号分隔）"
             android:defaultValue="" />
         
         <EditTextPreference
             android:key="gal_whitelist"
-            android:title="白名单"
+            android:title="用户白名单"
             android:summary="仅显示选项条的QQ号（逗号分隔）"
+            android:defaultValue="" />
+        
+        <ListPreference
+            android:key="gal_group_filter_mode"
+            android:title="群过滤模式"
+            android:entries="@array/filter_mode_names"
+            android:entryValues="@array/filter_mode_values"
+            android:defaultValue="blacklist"
+            android:summary="选择群黑名单或群白名单模式" />
+        
+        <EditTextPreference
+            android:key="gal_group_blacklist"
+            android:title="群黑名单"
+            android:summary="不显示选项条的群号（逗号分隔）"
+            android:defaultValue="" />
+        
+        <EditTextPreference
+            android:key="gal_group_whitelist"
+            android:title="群白名单"
+            android:summary="仅显示选项条的群号（逗号分隔）"
             android:defaultValue="" />
     </PreferenceCategory>
 
@@ -309,6 +328,12 @@
             android:key="gal_auto_show_options"
             android:title="@string/gal_auto_show_title"
             android:summary="@string/gal_auto_show_summary"
+            android:defaultValue="false" />
+        
+        <SwitchPreference
+            android:key="gal_disable_group_options"
+            android:title="关闭群聊选项显示"
+            android:summary="在群聊中不显示选项条和按钮（私聊不受影响）"
             android:defaultValue="false" />
         
         <SwitchPreference

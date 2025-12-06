@@ -3,6 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
+    android:background="?android:attr/colorBackground"
     android:padding="16dp">
 
     <TextView
@@ -11,6 +12,7 @@
         android:text="@string/ai_log_title"
         android:textSize="20sp"
         android:textStyle="bold"
+        android:textColor="?android:attr/textColorPrimary"
         android:paddingBottom="16dp"/>
 
     <ScrollView
@@ -18,7 +20,7 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:background="#F5F5F5"
+        android:background="?attr/colorSurface"
         android:padding="12dp"
         android:fillViewport="true">
 
@@ -26,7 +28,7 @@
             android:id="@+id/log_text_view"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textColor="#333333"
+            android:textColor="?android:attr/textColorPrimary"
             android:textSize="12sp"
             android:fontFamily="monospace"
             android:textIsSelectable="true"

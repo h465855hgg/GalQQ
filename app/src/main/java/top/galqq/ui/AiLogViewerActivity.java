@@ -33,9 +33,12 @@ public class AiLogViewerActivity extends AppCompatTransferActivity {
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        if (HostInfo.isInHostProcess()) {
-            setTheme(R.style.Theme_GalQQ_DayNight);
-        }
+        // 应用主题管理器，检测QQ的夜间模式设置
+        top.galqq.utils.ThemeManager.applyTheme(this);
+        top.galqq.utils.ThemeManager.updateConfiguration(this);
+        
+        // 设置主题
+        setTheme(top.galqq.utils.ThemeManager.getThemeResId(this));
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_ai_log_viewer);
         

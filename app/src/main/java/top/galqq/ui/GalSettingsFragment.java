@@ -144,13 +144,15 @@ public class GalSettingsFragment extends PreferenceFragmentCompat {
             });
         }
         
-        // AI Model
-        EditTextPreference aiModelPref = findPreference(ConfigManager.KEY_AI_MODEL);
+        // AI Model - 点击弹出模型选择对话框
+        Preference aiModelPref = findPreference(ConfigManager.KEY_AI_MODEL);
         if (aiModelPref != null) {
-            aiModelPref.setText(ConfigManager.getAiModel());
-            aiModelPref.setOnPreferenceChangeListener((preference, newValue) -> {
-                ConfigManager.setAiModel((String) newValue);
-                aiModelPref.setText((String) newValue);
+            // 更新summary显示当前模型
+            String currentModel = ConfigManager.getAiModel();
+            aiModelPref.setSummary("当前: " + (currentModel.isEmpty() ? "未设置" : currentModel));
+            
+            aiModelPref.setOnPreferenceClickListener(preference -> {
+                showModelSelectionDialog(aiModelPref);
                 return true;
             });
         }
@@ -489,6 +491,48 @@ public class GalSettingsFragment extends PreferenceFragmentCompat {
             whitelistPref.setText(ConfigManager.getWhitelist());
             whitelistPref.setOnPreferenceChangeListener((preference, newValue) -> {
                 ConfigManager.setWhitelist((String) newValue);
+                return true;
+            });
+        }
+        
+        // Group Filter Mode (群过滤模式)
+        androidx.preference.ListPreference groupFilterModePref = findPreference(ConfigManager.KEY_GROUP_FILTER_MODE);
+        if (groupFilterModePref != null) {
+            groupFilterModePref.setValue(ConfigManager.getGroupFilterMode());
+            groupFilterModePref.setOnPreferenceChangeListener((preference, newValue) -> {
+                ConfigManager.setGroupFilterMode((String) newValue);
+                return true;
+            });
+        }
+        
+        // Group Blacklist (群黑名单)
+        EditTextPreference groupBlacklistPref = findPreference(ConfigManager.KEY_GROUP_BLACKLIST);
+        if (groupBlacklistPref != null) {
+            groupBlacklistPref.setText(ConfigManager.getGroupBlacklist());
+            groupBlacklistPref.setOnPreferenceChangeListener((preference, newValue) -> {
+                ConfigManager.setGroupBlacklist((String) newValue);
+                return true;
+            });
+        }
+        
+        // Group Whitelist (群白名单)
+        EditTextPreference groupWhitelistPref = findPreference(ConfigManager.KEY_GROUP_WHITELIST);
+        if (groupWhitelistPref != null) {
+            groupWhitelistPref.setText(ConfigManager.getGroupWhitelist());
+            groupWhitelistPref.setOnPreferenceChangeListener((preference, newValue) -> {
+                ConfigManager.setGroupWhitelist((String) newValue);
+                return true;
+            });
+        }
+        
+        // Disable Group Options (关闭群聊选项显示)
+        Preference disableGroupOptionsSwitch = findPreference(ConfigManager.KEY_DISABLE_GROUP_OPTIONS);
+        if (disableGroupOptionsSwitch != null) {
+            if (disableGroupOptionsSwitch instanceof androidx.preference.TwoStatePreference) {
+                ((androidx.preference.TwoStatePreference) disableGroupOptionsSwitch).setChecked(ConfigManager.isDisableGroupOptions());
+            }
+            disableGroupOptionsSwitch.setOnPreferenceChangeListener((preference, newValue) -> {
+                ConfigManager.setDisableGroupOptions((Boolean) newValue);
                 return true;
             });
         }
@@ -953,5 +997,180 @@ public class GalSettingsFragment extends PreferenceFragmentCompat {
         } else {
             pref.setSummary(displayName + "\n" + apiUrl);
         }
+    }
+    
+    // 模型选择对话框相关变量
+    private android.app.AlertDialog modelDialog;
+    private java.util.List<String> cachedModels = new java.util.ArrayList<>();
+    
+    /**
+     * 显示模型选择对话框
+     * 使用原生AlertDialog，自动适配深色模式
+     */
+    private void showModelSelectionDialog(Preference aiModelPref) {
+        android.app.Activity activity = getActivity();
+        if (activity == null || !isAdded()) return;
+        
+        // 显示加载提示
+        android.app.ProgressDialog loadingDialog = new android.app.ProgressDialog(activity);
+        loadingDialog.setMessage("正在获取模型列表...");
+        loadingDialog.setCancelable(true);
+        loadingDialog.show();
+        
+        // 获取模型列表（使用缓存）
+        top.galqq.utils.ModelListFetcher.fetchModels(requireContext(), false, 
+            new top.galqq.utils.ModelListFetcher.ModelListCallback() {
+                @Override
+                public void onSuccess(java.util.List<String> models) {
+                    loadingDialog.dismiss();
+                    if (activity == null || !isAdded()) return;
+                    
+                    cachedModels = models;
+                    showModelListDialog(aiModelPref, models, false);
+                }
+                
+                @Override
+                public void onFailure(String error) {
+                    loadingDialog.dismiss();
+                    if (activity == null || !isAdded()) return;
+                    
+                    // 获取失败，显示错误并提供手动输入选项
+                    new android.app.AlertDialog.Builder(activity)
+                        .setTitle("获取模型列表失败")
+                        .setMessage("错误: " + error + "\n\n请检查API配置或手动输入模型名称。")
+                        .setPositiveButton("手动输入", (d, w) -> showCustomModelInputDialog(aiModelPref))
+                        .setNegativeButton("取消", null)
+                        .setNeutralButton("重试", (d, w) -> {
+                            top.galqq.utils.ModelListFetcher.clearCache();
+                            showModelSelectionDialog(aiModelPref);
+                        })
+                        .show();
+                }
+            });
+    }
+    
+    /**
+     * 显示模型列表对话框
+     */
+    private void showModelListDialog(Preference aiModelPref, java.util.List<String> models, boolean fromRefresh) {
+        android.app.Activity activity = getActivity();
+        if (activity == null || !isAdded()) return;
+        
+        String currentModel = ConfigManager.getAiModel();
+        
+        // 构建选项列表
+        java.util.List<String> displayList = new java.util.ArrayList<>();
+        if (models.isEmpty()) {
+            displayList.add("未获取到模型，点击手动输入");
+        } else {
+            displayList.addAll(models);
+        }
+        
+        String[] items = displayList.toArray(new String[0]);
+        
+        // 找到当前选中的位置
+        int checkedItem = -1;
+        for (int i = 0; i < items.length; i++) {
+            if (items[i].equals(currentModel)) {
+                checkedItem = i;
+                break;
+            }
+        }
+        
+        modelDialog = new android.app.AlertDialog.Builder(activity)
+            .setTitle("选择AI模型")
+            .setSingleChoiceItems(items, checkedItem, (dialog, which) -> {
+                String selected = items[which];
+                if (selected.equals("未获取到模型，点击手动输入")) {
+                    dialog.dismiss();
+                    showCustomModelInputDialog(aiModelPref);
+                } else {
+                    ConfigManager.setAiModel(selected);
+                    aiModelPref.setSummary("当前: " + selected);
+                    dialog.dismiss();
+                    android.widget.Toast.makeText(activity, "已选择: " + selected, android.widget.Toast.LENGTH_SHORT).show();
+                }
+            })
+            .setPositiveButton("手动输入", (d, w) -> showCustomModelInputDialog(aiModelPref))
+            .setNegativeButton("取消", null)
+            .setNeutralButton("刷新", (d, w) -> {
+                // 强制刷新
+                android.app.ProgressDialog refreshDialog = new android.app.ProgressDialog(activity);
+                refreshDialog.setMessage("正在刷新模型列表...");
+                refreshDialog.setCancelable(true);
+                refreshDialog.show();
+                
+                top.galqq.utils.ModelListFetcher.fetchModels(requireContext(), true, 
+                    new top.galqq.utils.ModelListFetcher.ModelListCallback() {
+                        @Override
+                        public void onSuccess(java.util.List<String> newModels) {
+                            refreshDialog.dismiss();
+                            if (activity == null || !isAdded()) return;
+                            cachedModels = newModels;
+                            showModelListDialog(aiModelPref, newModels, true);
+                        }
+                        
+                        @Override
+                        public void onFailure(String error) {
+                            refreshDialog.dismiss();
+                            if (activity == null || !isAdded()) return;
+                            android.widget.Toast.makeText(activity, "刷新失败: " + error, android.widget.Toast.LENGTH_SHORT).show();
+                            // 显示之前的列表
+                            showModelListDialog(aiModelPref, cachedModels, false);
+                        }
+                    });
+            })
+            .create();
+        
+        modelDialog.show();
+    }
+    
+    /**
+     * 显示自定义模型输入对话框
+     */
+    private void showCustomModelInputDialog(Preference aiModelPref) {
+        android.app.Activity activity = getActivity();
+        if (activity == null || !isAdded()) return;
+        
+        android.widget.EditText input = new android.widget.EditText(activity);
+        input.setHint("输入模型名称，如 gpt-4o");
+        input.setText(ConfigManager.getAiModel());
+        input.setSelectAllOnFocus(true);
+        
+        // 设置padding
+        int padding = (int) (16 * activity.getResources().getDisplayMetrics().density);
+        android.widget.FrameLayout container = new android.widget.FrameLayout(activity);
+        android.widget.FrameLayout.LayoutParams params = new android.widget.FrameLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+            android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
+        );
+        params.setMargins(padding, padding / 2, padding, 0);
+        input.setLayoutParams(params);
+        container.addView(input);
+        
+        new android.app.AlertDialog.Builder(activity)
+            .setTitle("自定义模型")
+            .setMessage("请输入模型名称：")
+            .setView(container)
+            .setPositiveButton("确定", (dialog, which) -> {
+                String modelName = input.getText().toString().trim();
+                if (!modelName.isEmpty()) {
+                    ConfigManager.setAiModel(modelName);
+                    aiModelPref.setSummary("当前: " + modelName);
+                    android.widget.Toast.makeText(activity, "已设置模型: " + modelName, android.widget.Toast.LENGTH_SHORT).show();
+                }
+            })
+            .setNegativeButton("取消", null)
+            .show();
+        
+        // 自动弹出键盘
+        input.requestFocus();
+        input.postDelayed(() -> {
+            android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) 
+                activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+            if (imm != null) {
+                imm.showSoftInput(input, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+            }
+        }, 200);
     }
 }

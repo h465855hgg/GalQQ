@@ -9,4 +9,14 @@
     <color name="white">#FFFFFFFF</color>
     <!-- 扁平卡片边框颜色 -->
     <color name="flat_card_stroke">#FF303030</color>
+    
+    <!-- GalQQ 主题背景色 -->
+    <color name="galqq_background_light">#FFFFFFFF</color>
+    <color name="galqq_background_dark">#FF202124</color>
+    
+    <!-- GalQQ 文字颜色 -->
+    <color name="galqq_text_primary_light">#FF202124</color>
+    <color name="galqq_text_primary_dark">#FFFFFFFF</color>
+    <color name="galqq_text_secondary_light">#FF5F6368</color>
+    <color name="galqq_text_secondary_dark">#FFBDC1C6</color>
 </resources>
