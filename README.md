@@ -20,7 +20,6 @@ GalQQ 是一个基于 Xposed 框架的 Android 模块，旨在为 QQ 聊天界�
 - **LSPosed 框架支持**：基于 LSPosed 框架开发
 - **QQNT 架构兼容**：支持 QQ 最新架构（QQNT）
 - **模块化设计**：清晰的代码结构，易于扩展和维护
-- **Compose UI**：使用 Jetpack Compose 构建现代化界面
 
 ### 📱 用户界面
 - **设置界面**：直观的配置界面，支持主题切换
